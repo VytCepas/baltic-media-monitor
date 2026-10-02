@@ -6,6 +6,9 @@ set -uo pipefail
 exec >>/var/log/ccbd.log 2>&1
 md() { curl -fsH 'Metadata-Flavor: Google' "http://metadata.google.internal/computeMetadata/v1/instance/attributes/$1"; }
 BUCKET=$(md ccbd-bucket) || { echo "no ccbd-bucket metadata"; exit 1; }
+# gcloud caches "not on GCE" in this file when its first call races the network at boot, and then
+# refuses every later call ("no active account"): clear it on every boot.
+rm -f /root/.config/gcloud/gce
 EMBEDDER=$(md ccbd-embedder-url)
 export EMBEDDER
 log() { echo "$(date -u +%FT%TZ) $*"; }
