@@ -19,7 +19,7 @@ from baltic.batch import mapper
 from baltic.layout import Lake
 
 
-def session(cores: int, memory: str = "6g") -> SparkSession:
+def session(cores: int, memory: str) -> SparkSession:
     """Spark in local mode: one JVM, `cores` worker threads (a single-node "cluster")."""
     spark = (
         SparkSession.builder.master(f"local[{cores}]")

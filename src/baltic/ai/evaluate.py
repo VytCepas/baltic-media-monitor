@@ -46,15 +46,13 @@ def blind(items: pd.DataFrame, shown: list[str], seed: int) -> tuple[pd.DataFram
     return sheet.assign(label=""), items.merge(sheet, on=shown)
 
 
-def sample_pairs(
-    pairs: pd.DataFrame, n: int = 30, seed: int = 7
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+def sample_pairs(pairs: pd.DataFrame, n: int = 30) -> tuple[pd.DataFrame, pd.DataFrame]:
     """N pairs per stratum; a pair drawn by two strata is labelled once and counts for both."""
     drawn = [
-        df.sample(min(n, len(df)), random_state=seed).assign(stratum=name)
+        df.sample(min(n, len(df)), random_state=SEED).assign(stratum=name)
         for name, df in strata(pairs).items()
     ]
-    return blind(pd.concat(drawn), ["russian_title", "baltic_title"], seed)
+    return blind(pd.concat(drawn), ["russian_title", "baltic_title"], SEED)
 
 
 def hours(table: pd.DataFrame, alerts: list[Alert]) -> pd.DataFrame:
@@ -105,9 +103,4 @@ def h3(precision: dict[str, Any]) -> dict[str, Any]:
     if not {"emb_top", "ent"} <= precision.keys():
         return {"decided": False}
     shown = precision["emb_top"]["low"] > precision["ent"]["high"]
-    return {
-        "decided": True,
-        "shown": shown,
-        "emb_top": precision["emb_top"],
-        "ent": precision["ent"],
-    }
+    return {"decided": True, "shown": shown} | {k: precision[k] for k in ("emb_top", "ent")}

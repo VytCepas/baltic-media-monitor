@@ -5,19 +5,14 @@
 #
 #   PROJECT=<id> INVOKER=user:<you@example.com> bash infra/up.sh   # GCLOUD="<cmd>" swaps the gcloud command
 set -euo pipefail
-: "${PROJECT:?set PROJECT}"
-REGION=${REGION:-europe-north1}
-ZONE=${ZONE:-europe-north1-a}
-BUCKET=${BUCKET:-$PROJECT-ccbd-baltic}
+# shellcheck source=infra/env.sh
+. "$(dirname "$0")/env.sh"
 MACHINE=${MACHINE:-e2-standard-8}        # big for the backfill and the study, then downsized
 STOP_AT=${STOP_AT:-2026-10-08T00:00:00+03:00}
 LABELS=purpose=ccbd-coursework
 VM_SA=ccbd-vm@$PROJECT.iam.gserviceaccount.com
 AI_SA=ccbd-embedder@$PROJECT.iam.gserviceaccount.com
 IMAGE=$REGION-docker.pkg.dev/$PROJECT/ccbd/embedder:v1
-read -r -a G <<< "${GCLOUD:-gcloud}"
-g() { "${G[@]}" --project "$PROJECT" --quiet "$@"; }
-exists() { g "$@" >/dev/null 2>&1; }
 step() { echo "== $*"; }
 
 step "storage: private bucket, raw/ expires after 30 days"

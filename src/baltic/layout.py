@@ -26,6 +26,11 @@ def write_atomic(path: Path, data: bytes) -> None:
     tmp.replace(path)
 
 
+def feed_of(path: str) -> str:
+    """The feed of a raw file, from the path (or Spark's URI) Layout.raw built."""
+    return "tr" if "/feed=tr/" in path else "en"
+
+
 @dataclass(frozen=True)
 class Lake:
     """A Spark output tree: silver articles plus gold aggregate tables."""

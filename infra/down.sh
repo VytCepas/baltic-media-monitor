@@ -4,13 +4,8 @@
 #
 #   PROJECT=<id> bash infra/down.sh   # GCLOUD="<cmd>" swaps the gcloud command
 set -euo pipefail
-: "${PROJECT:?set PROJECT}"
-REGION=${REGION:-europe-north1}
-ZONE=${ZONE:-europe-north1-a}
-BUCKET=${BUCKET:-$PROJECT-ccbd-baltic}
-read -r -a G <<< "${GCLOUD:-gcloud}"
-g() { "${G[@]}" --project "$PROJECT" --quiet "$@"; }
-exists() { g "$@" >/dev/null 2>&1; }
+# shellcheck source=infra/env.sh
+. "$(dirname "$0")/env.sh"
 
 BUCKET=$BUCKET just pull
 echo "Will delete from $PROJECT: VM ccbd-vm, Cloud Run ccbd-embedder, repository ccbd, firewall ccbd-allow-iap-ssh,"

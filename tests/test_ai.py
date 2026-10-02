@@ -1,9 +1,10 @@
 import numpy as np
 import pandas as pd
-from fakes import Response
+from fakes import Response, write_lake
 
+from baltic import gdelt
 from baltic.ai import evaluate
-from baltic.ai.match import Embedder, by_embedding, by_entities, entities, match
+from baltic.ai.match import TARGETS, Embedder, by_embedding, by_entities, entities, load, match
 
 
 class EmbedHttp:
@@ -129,3 +130,19 @@ def test_detector_sample_mixes_strong_alerts_with_quiet_busy_hours():
         list(sheet.columns) == ["item", "group", "ts", "headlines", "label"]
         and "alert" not in sheet
     )
+
+
+def test_load_gives_ru_by_sources_and_time_sorted_baltic_candidates(layout, month):
+    write_lake(layout.lake.root, *month)
+    src, dst = load(layout.lake)
+    assert set(src.group) == {"ru_by"} and set(dst.group) == set(TARGETS)
+    assert dst.t.is_monotonic_increasing  # by_embedding's searchsorted needs it
+    assert (dst.t == gdelt.epoch_s(dst.ts) // 60).all()
+
+
+def test_an_entity_match_must_fall_inside_the_time_window():
+    src, dst = [{"p:A", "p:B"}], [{"p:A", "p:B"}] + [{f"p:x{i}"} for i in range(100)]
+    times = np.zeros(len(dst))
+    for t0, expected in ((100, -1), (10, 0)):
+        times[0] = t0
+        assert by_entities(src, dst, np.zeros(1), times, 10)[0][0] == expected

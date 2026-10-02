@@ -80,7 +80,7 @@ def test_monitor_writes_slots_and_resumes_after_a_restart(layout):
     m = Monitor(layout, clock=lambda: 100.0)
     for msg in (art(A, "1"), done(A, "en", 90.0), done(A, "tr", 95.0), done(B, "en")):
         m.handle(msg)
-    assert not m.idle  # B is half-read: the offset must not be committed yet
+    assert not m.assembler.idle  # B is half-read: the offset must not be committed yet
     restarted = Monitor(layout)
     assert restarted.assembler.last_closed == A
     for msg in (art(A, "1"), done(A, "en"), done(A, "tr"), done(B, "en"), done(B, "tr")):

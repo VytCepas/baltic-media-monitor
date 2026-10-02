@@ -8,7 +8,7 @@ fresh detector and saves it as the monitor's state, with the last batch slot as 
 import pandas as pd
 
 from baltic import article, gdelt
-from baltic.detector import SpikeDetector, backtest, densify
+from baltic.detector import Alert, SpikeDetector, backtest, densify
 from baltic.layout import Lake, Layout
 from baltic.stream.monitor import State
 
@@ -16,9 +16,15 @@ from baltic.stream.monitor import State
 def history(lake: Lake) -> pd.DataFrame:
     """The lake's security series as a dense slot x group table over the whole backfilled window."""
     days = pd.read_parquet(lake.gold("domain_day"), columns=["dt"]).dt
-    first = gdelt.to_ts(pd.Timestamp(days.min()).to_pydatetime())
-    last = gdelt.shift(gdelt.to_ts(pd.Timestamp(days.max()).to_pydatetime()), 95)  # 23:45 that day
+    first = gdelt.to_ts(pd.Timestamp(days.min()))
+    last = gdelt.shift(gdelt.to_ts(pd.Timestamp(days.max())), 95)  # 23:45 that day
     return densify(pd.read_parquet(lake.gold("series_15m")), article.GROUPS, first, last)
+
+
+def replay(lake: Lake) -> tuple[pd.DataFrame, SpikeDetector, list[Alert]]:
+    """The history through a fresh detector: (the table, the warmed detector, its alerts)."""
+    table, detector = history(lake), SpikeDetector(article.GROUPS)
+    return table, detector, backtest(table, detector)
 
 
 def seed(layout: Layout) -> bool:
@@ -26,8 +32,6 @@ def seed(layout: Layout) -> bool:
     path = layout.state
     if path.exists():
         return False
-    table = history(layout.lake)
-    detector = SpikeDetector(article.GROUPS)
-    backtest(table, detector)
+    table, detector, _ = replay(layout.lake)
     State(detector, last_closed=str(table.index[-1])).save(path)
     return True

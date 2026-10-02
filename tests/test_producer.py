@@ -143,6 +143,20 @@ def test_kafka_sink_sends_articles_then_done_and_one_failure_fails_only_that_fil
     assert kinds == [("article", "20261001001500")] * 2 + [("done", "20261001001500")]
 
 
+def test_a_full_local_queue_delays_a_message_and_never_drops_it(monkeypatch):
+    class Full(FakeProducer):
+        def produce(self, *args, **kwargs):
+            if not getattr(self, "waited", False):
+                self.waited = True
+                raise BufferError
+            super().produce(*args, **kwargs)
+
+    monkeypatch.setattr(producer, "Producer", Full)
+    sink = producer.KafkaSink("kafka:9092", "gkg.raw")
+    assert sink.publish("en", SINCE, [{"id": "a", "url": "u"}]) == 1
+    assert [m["kind"] for m in sink.producer.sent] == ["article", "done"]
+
+
 def test_a_message_kafka_never_confirmed_fails_the_file(monkeypatch):
     monkeypatch.setattr(producer, "Producer", FakeProducer)
     sink = producer.KafkaSink("kafka:9092", "gkg.raw")

@@ -9,7 +9,7 @@ from collections import Counter
 from collections.abc import Iterator
 from typing import Any, get_type_hints
 
-from baltic import article, gdelt
+from baltic import article, gdelt, layout
 
 _SPARK_TYPE: dict[object, str] = {
     str: "string",
@@ -26,7 +26,7 @@ Key = tuple[str, str, str]  # (day YYYYMMDD, group, domain)
 
 def map_file(path: str, data: bytes) -> Iterator[tuple[str, Any]]:
     """Yield ("article", row) per relevant article, then ("count", (key, (rows, about))) per key."""
-    feed = "tr" if "feed=tr" in path else "en"
+    feed = layout.feed_of(path)
     rows: Counter[Key] = Counter()
     about: Counter[Key] = Counter()
     for raw in gdelt.read_rows(data):

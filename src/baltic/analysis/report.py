@@ -14,7 +14,6 @@ from matplotlib.figure import Figure  # the object API: no pyplot state, no disp
 
 from baltic import article, gdelt
 from baltic.analysis import hypotheses
-from baltic.detector import SpikeDetector, backtest
 from baltic.layout import Layout
 from baltic.stream import seed
 from baltic.stream.monitor import read_slots
@@ -37,14 +36,14 @@ STEADY_S = 3600  # a slot closed within an hour of its end was not part of a cat
 E2_DAYS = 7  # E2 (cores) is measured on this many days
 
 
-def save(fig: Figure, path: Path) -> None:
-    """Write a figure as PNG."""
-    fig.savefig(path, dpi=150)
+def figure(width: float, height: float) -> Figure:
+    """A figure in the report's layout and resolution (savefig writes it at this dpi)."""
+    return Figure(figsize=(width, height), layout="tight", dpi=150)
 
 
 def attention_figure(h1: dict[str, Any], path: Path) -> None:
     """Figure 1: share of each foreign group's articles that are about the Baltics (H1 compares these)."""
-    fig = Figure(figsize=(6.5, 3.2), layout="tight")
+    fig = figure(6.5, 3.2)
     ax = fig.subplots()
     groups = [g for g in ("ru_by", "regional", "other") if g in h1["share"]]
     bars = ax.bar(
@@ -55,7 +54,7 @@ def attention_figure(h1: dict[str, Any], path: Path) -> None:
     ax.bar_label(bars, fmt="%.2f %%")
     ax.set_ylabel("% of the group's articles about LT/LV/EE")
     ax.set_title("H1 attention to the Baltics")
-    save(fig, path)
+    fig.savefig(path)
 
 
 def theme_figure(themes: pd.DataFrame, path: Path, top: int = 8) -> dict[str, float]:
@@ -67,7 +66,7 @@ def theme_figure(themes: pd.DataFrame, path: Path, top: int = 8) -> dict[str, fl
     common = [t for t in frequent if not str(t).startswith(lexical)]
     ratio = np.log(share.loc[common, "ru_by"] / share.loc[common, "other"]).sort_values()
     pick = ratio if len(ratio) <= 2 * top else pd.concat([ratio.head(top), ratio.tail(top)])
-    fig = Figure(figsize=(7, 5), layout="tight")
+    fig = figure(7, 5)
     ax = fig.subplots()
     ax.barh(
         [t[:40] for t in pick.index],
@@ -77,7 +76,7 @@ def theme_figure(themes: pd.DataFrame, path: Path, top: int = 8) -> dict[str, fl
     ax.axvline(0, color="k", lw=0.8)
     ax.set_xlabel("log(share in ru_by coverage / share in other foreign coverage)")
     ax.set_title("Themes in coverage of the Baltics")
-    save(fig, path)
+    fig.savefig(path)
     return {str(t): round(float(v), 3) for t, v in pick.items()}
 
 
@@ -85,14 +84,14 @@ def tone_figure(h2: dict[str, Any], path: Path) -> None:
     """Figure 3: mean tone per group, security vs other stories."""
     tone = pd.DataFrame(h2["mean_tone"]).reindex(article.GROUPS).dropna(how="all")
     tone.columns = pd.Index(["security" if c else "other stories" for c in tone.columns])
-    fig = Figure(figsize=(8, 3.8), layout="tight")
+    fig = figure(8, 3.8)
     ax = fig.subplots()
     tone.rename(index=LABEL).plot.bar(ax=ax, rot=15, color=["#bdc3c7", "#34495e"])
     ax.legend(loc="upper left", bbox_to_anchor=(1, 1), frameon=False)  # beside, not over, the bars
     ax.axhline(0, color="k", lw=0.8)
     ax.set_ylabel("mean tone (GDELT, % pos. - % neg. words)")
     ax.set_title("H2 tone of articles about the Baltics")
-    save(fig, path)
+    fig.savefig(path)
 
 
 def scaling(bench: pd.DataFrame, days: int = E2_DAYS) -> dict[str, Any]:
@@ -116,7 +115,7 @@ def scaling(bench: pd.DataFrame, days: int = E2_DAYS) -> dict[str, Any]:
 
 def scaling_figure(bench: pd.DataFrame, path: Path) -> None:
     """Figure 4: E1 wall time vs data size, E2 speed-up vs cores (median, range of repeats)."""
-    fig = Figure(figsize=(10, 3.6), layout="tight")
+    fig = figure(10, 3.6)
     (left, right) = fig.subplots(1, 2)
     for (engine, workers), g in bench.groupby(["engine", "workers"]):
         s = g.groupby("days").wall_s.agg(["median", "min", "max"])
@@ -139,12 +138,12 @@ def scaling_figure(bench: pd.DataFrame, path: Path) -> None:
             title=f"E2 cores, {E2_DAYS} days",
         )
         right.legend()
-    save(fig, path)
+    fig.savefig(path)
 
 
 def detector_figure(table: pd.DataFrame, alerts: list[Any], path: Path) -> None:
     """Figure 5: rolling-hour security counts per group with the backtest's alerts."""
-    fig = Figure(figsize=(11, 3.5), layout="tight")
+    fig = figure(11, 3.5)
     ax = fig.subplots()
     times = pd.to_datetime(table.index, format=gdelt.TS)
     for g in table.columns:
@@ -155,7 +154,7 @@ def detector_figure(table: pd.DataFrame, alerts: list[Any], path: Path) -> None:
     ax.set_yscale("symlog")
     ax.legend(ncol=5, loc="upper center", bbox_to_anchor=(0.5, -0.1), frameon=False)
     ax.set_title(f"Security coverage of the Baltics, rolling hour; {len(alerts)} alerts")
-    save(fig, path)
+    fig.savefig(path)
 
 
 def live(slots: pd.DataFrame, alerts: list[dict[str, Any]]) -> dict[str, Any]:
@@ -189,8 +188,7 @@ def build(layout: Layout) -> dict[str, Any]:
             pd.read_parquet(lake.gold("theme_group")), out / "2_themes.png"
         )
         tone_figure(summary["H2"], out / "3_tone.png")
-        table = seed.history(lake)
-        alerts = backtest(table, SpikeDetector(article.GROUPS))
+        table, _, alerts = seed.replay(lake)
         detector_figure(table, alerts, out / "5_detector.png")
         summary["backtest"] = {"slots": len(table), "alerts": alerts}
     if runs := sorted(layout.bench().parent.glob(layout.bench().name)):

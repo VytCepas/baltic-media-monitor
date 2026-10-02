@@ -15,8 +15,9 @@ from typing import Any
 
 import pandas as pd
 
-from baltic import article, gdelt
-from baltic.layout import Layout
+from baltic import gdelt
+from baltic.batch import bench as study
+from baltic.layout import Layout, write_atomic
 
 Args = argparse.Namespace
 
@@ -49,7 +50,7 @@ def mirror(a: Args, layout: Layout) -> int:
     """Backfill raw files before the live window; a failed download stops it (re-run to resume)."""
     from baltic.batch.mirror import mirror as backfill
 
-    day_ago = gdelt.to_ts(datetime.now(UTC).replace(tzinfo=None) - timedelta(days=1))
+    day_ago = gdelt.to_ts(datetime.now(UTC) - timedelta(days=1))
     until = min(os.environ.get("SINCE") or day_ago, day_ago)
     print(json.dumps(backfill(layout, gdelt.session(), a.day, a.days, until)))
     return 0
@@ -79,9 +80,8 @@ def measure(a: Args, layout: Layout) -> int:
 
 def bench(a: Args, layout: Layout) -> int:
     """The scaling study: E1, E2, E3, repeated and shuffled."""
-    from baltic.batch.bench import configs, run_all
-
-    print(f"{run_all(layout, a.day, configs(tuple(a.days), tuple(a.cores)), a.repeats)} runs done")
+    cfgs = study.configs(tuple(a.days), tuple(a.cores))
+    print(f"{study.run_all(layout, a.day, cfgs, a.repeats)} runs done")
     return 0
 
 
@@ -104,11 +104,9 @@ def match(a: Args, layout: Layout) -> int:
 def sample(_a: Args, layout: Layout) -> int:
     """Write the blind labelling sheets (pairs, detector hours) and their hidden keys."""
     from baltic.ai import evaluate
-    from baltic.detector import SpikeDetector, backtest
-    from baltic.stream.seed import history
+    from baltic.stream.seed import replay
 
-    table = history(layout.lake)
-    alerts = backtest(table, SpikeDetector(article.GROUPS))
+    table, _, alerts = replay(layout.lake)
     articles = pd.read_parquet(
         layout.lake.silver, columns=["ts", "group", "title", "about_baltic", "security"]
     )
@@ -158,12 +156,9 @@ def stream_vs_batch(a: Args, layout: Layout) -> int:
     from baltic.analysis import checks
     from baltic.stream.monitor import read_slots
 
-    horizon = a.horizon or gdelt.to_ts(
-        datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=30)
-    )
+    horizon = a.horizon or gdelt.to_ts(datetime.now(UTC) - timedelta(minutes=30))
     result = checks.stream_vs_batch(read_slots(layout.slots), layout.live_lake, horizon, a.start)
-    (layout.report).mkdir(parents=True, exist_ok=True)
-    (layout.report / "stream_vs_batch.json").write_text(json.dumps(result))
+    write_atomic(layout.report / "stream_vs_batch.json", json.dumps(result).encode())
     print(json.dumps(result))
     return 0 if result["ok"] else 1
 
@@ -214,9 +209,9 @@ def parser() -> argparse.ArgumentParser:
     command(
         bench,
         day,
-        ("--days", {"type": int, "nargs": "+", "default": [1, 7, 30]}),
-        ("--cores", {"type": int, "nargs": "+", "default": [1, 2, 4, 8]}),
-        ("--repeats", {"type": int, "default": 3}),
+        ("--days", {"type": int, "nargs": "+", "default": study.DAYS}),
+        ("--cores", {"type": int, "nargs": "+", "default": study.CORES}),
+        ("--repeats", {"type": int, "default": study.REPEATS}),
     )
     command(match, ("--embedder", {"default": os.environ.get("EMBEDDER", "http://localhost:8080")}))
     command(sample)

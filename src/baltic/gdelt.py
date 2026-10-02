@@ -53,8 +53,9 @@ def slots(first: str, last: str) -> list[str]:
 
 def day_slots(day: str, days: int = 1) -> list[str]:
     """Every slot of `days` days starting at day (YYYY-MM-DD)."""
-    start = datetime.fromisoformat(day)
-    return slots(to_ts(start), to_ts(start + timedelta(days=days) - SLOT))
+    return list(
+        pd.date_range(day, periods=days * (timedelta(days=1) // SLOT), freq=SLOT).strftime(TS)
+    )
 
 
 def file_url(feed: str, ts: str) -> str:

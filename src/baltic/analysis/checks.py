@@ -27,20 +27,20 @@ def reference() -> dict[str, dict[str, int]]:
 
 def reconcile(lake: Lake, ref: dict[str, dict[str, int]]) -> dict[str, Any]:
     """Compare every reference day; a day the lake lacks fails."""
+
+    def ymd(dt: pd.Series) -> pd.Series:
+        return pd.to_datetime(dt).dt.strftime("%Y%m%d")
+
     dd = pd.read_parquet(lake.gold("domain_day"), columns=["dt", "n_rows"])
-    rows = dd.groupby(pd.to_datetime(dd.dt).dt.strftime("%Y%m%d")).n_rows.sum()
+    rows = dd.groupby(ymd(dd.dt)).n_rows.sum()
     silver = pd.read_parquet(lake.silver, columns=["dt"])
-    relevant = silver.groupby(pd.to_datetime(silver.dt).dt.strftime("%Y%m%d")).size()
+    relevant = silver.groupby(ymd(silver.dt)).size()
     days = {}
     for day in sorted(ref):
+        n = int(rows.get(day, 0))
         rel_diff = abs(int(relevant.get(day, 0)) - ref[day]["relevant"]) / ref[day]["relevant"]
-        ok = int(rows.get(day, 0)) == ref[day]["rows"] and rel_diff <= 0.005
-        days[day] = {
-            "rows": int(rows.get(day, 0)),
-            "ref_rows": ref[day]["rows"],
-            "relevant_diff": rel_diff,
-            "ok": ok,
-        }
+        ok = n == ref[day]["rows"] and rel_diff <= 0.005
+        days[day] = {"rows": n, "ref_rows": ref[day]["rows"], "relevant_diff": rel_diff, "ok": ok}
     return {"days": days, "ok": sum(d["ok"] for d in days.values()), "of": len(days)}
 
 

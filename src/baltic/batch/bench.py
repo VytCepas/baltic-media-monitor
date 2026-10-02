@@ -18,6 +18,8 @@ from dataclasses import asdict, dataclass
 
 from baltic.layout import Layout, write_atomic
 
+DAYS, CORES, REPEATS = (1, 7, 30), (1, 2, 4, 8), 3
+
 
 @dataclass(frozen=True)
 class Config:
@@ -33,9 +35,7 @@ class Config:
         return f"{self.engine}-d{self.days}-w{self.workers}"
 
 
-def configs(
-    days: tuple[int, ...] = (1, 7, 30), cores: tuple[int, ...] = (1, 2, 4, 8)
-) -> list[Config]:
+def configs(days: tuple[int, ...] = DAYS, cores: tuple[int, ...] = CORES) -> list[Config]:
     """E1 + E2 + E3 as a set of distinct configurations (E1's 7-day run is also E2's 8-core run)."""
     mid, top = days[len(days) // 2], cores[-1]
     wanted = [Config("spark", d, top) for d in days]
@@ -44,14 +44,14 @@ def configs(
     return list(dict.fromkeys(wanted))
 
 
-def schedule(cfgs: list[Config], repeats: int, seed: int = 1) -> list[tuple[Config, int]]:
+def schedule(cfgs: list[Config], repeats: int) -> list[tuple[Config, int]]:
     """Every (configuration, repeat) pair in a reproducible random order."""
     runs = [(c, r) for r in range(1, repeats + 1) for c in cfgs]
-    random.Random(seed).shuffle(runs)  # noqa: S311  run order, not security
+    random.Random(1).shuffle(runs)  # noqa: S311  run order, not security
     return runs
 
 
-def run_all(layout: Layout, day: str, cfgs: list[Config], repeats: int = 3) -> int:
+def run_all(layout: Layout, day: str, cfgs: list[Config], repeats: int = REPEATS) -> int:
     """Run every pending (configuration, repeat) as a subprocess; returns how many ran."""
     ran = 0
     for cfg, repeat in schedule(cfgs, repeats):
@@ -71,8 +71,7 @@ def run_all(layout: Layout, day: str, cfgs: list[Config], repeats: int = 3) -> i
         done = subprocess.run(command, check=True, capture_output=True, text=True)  # noqa: S603  own CLI
         result = json.loads(done.stdout.splitlines()[-1])  # the last line; Spark may log above it
         record = {**asdict(cfg), "tag": cfg.tag, "repeat": repeat, "day": day, **result}
-        write_atomic(
-            out, json.dumps(record).encode()
-        )  # a crash never leaves a half file that is skipped
+        # atomic: a crash never leaves a half file that the next boot would skip
+        write_atomic(out, json.dumps(record).encode())
         ran += 1
     return ran

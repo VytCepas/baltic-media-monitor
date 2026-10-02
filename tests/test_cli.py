@@ -1,12 +1,16 @@
 """The command line end to end over a synthetic data tree: the wiring from arguments to functions."""
 
 import json
+from datetime import UTC, datetime
 
 import numpy as np
 import pandas as pd
-from fakes import write_lake
+import pytest
+from fakes import Http, slots_jsonl, write_lake
 
+from baltic import gdelt
 from baltic.__main__ import main
+from baltic.batch import baseline, etl
 from baltic.stream.monitor import State
 
 
@@ -15,8 +19,7 @@ def run(layout, *argv):
 
 
 def test_seed_sample_evaluate_report(layout, month):
-    articles, domain_day, series = month
-    write_lake(layout.lake.root, articles, domain_day, series)
+    write_lake(layout.lake.root, *month)
     assert run(layout, "seed") == 0 and State.load(layout.state).last_closed == "20260910234500"
     n = 120
     pairs = pd.DataFrame(
@@ -45,14 +48,10 @@ def test_seed_sample_evaluate_report(layout, month):
 
 
 def test_checks_exit_non_zero_when_they_fail(layout, month):
-    articles, domain_day, series = month
-    write_lake(layout.lake.root, articles, domain_day, series)
+    write_lake(layout.lake.root, *month)
     assert run(layout, "reconcile") == 1  # synthetic September does not match the real collector
-    write_lake(layout.live_lake.root, articles, domain_day, series)
-    layout.slots.parent.mkdir(parents=True)
-    (layout.slots).write_text(
-        json.dumps({"slot": "20260901000000", "security": {"ru_by": 99}}) + "\n"
-    )
+    write_lake(layout.live_lake.root, *month)
+    slots_jsonl(layout.slots, [{"slot": "20260901000000", "security": {"ru_by": 99}}])
     assert run(layout, "stream-vs-batch", "--horizon", "20260930000000") == 1
     assert not json.loads((layout.report / "stream_vs_batch.json").read_text())["ok"]
 
@@ -67,3 +66,27 @@ def test_report_includes_the_scaling_study(layout):
     assert (
         summary["scaling"]["speedup"]["2"] == 40 / 22 and (layout.report / "4_scaling.png").exists()
     )
+
+
+@pytest.mark.parametrize("since", ["20260915000000", "20991231000000"])
+def test_mirror_stops_before_since_and_before_the_last_day(layout, monkeypatch, since):
+    monkeypatch.setenv("SINCE", since)
+    monkeypatch.setattr(gdelt, "session", lambda: Http({}, {}))
+    day = "2026-09-15" if since < "2099" else datetime.now(UTC).date().isoformat()
+    with pytest.raises(ValueError, match="live window"):
+        run(layout, "mirror", day, "1")
+
+
+def test_only_etl_live_writes_the_live_lake_and_measure_writes_none(layout, monkeypatch):
+    seen = []
+    monkeypatch.setattr(etl, "run", lambda _f, _w, lake, *_m: seen.append(lake) or {})
+    monkeypatch.setattr(baseline, "run", lambda _f, _w: seen.append("pool") or {})
+    one = ["--day", "2026-09-01", "--days", "1", "--workers", "1"]
+    for argv in (
+        ["etl", "2026-09-01", "1", "--live"],
+        ["etl", "2026-09-01", "1"],
+        ["measure", "spark", *one],
+        ["measure", "python", *one],
+    ):
+        assert run(layout, *argv) == 0
+    assert seen == [layout.live_lake, layout.lake, None, "pool"]

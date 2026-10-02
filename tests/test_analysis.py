@@ -1,11 +1,14 @@
 import json
 
 import pandas as pd
+import pytest
 from fakes import slots_jsonl, write_lake
 
 from baltic import gdelt
 from baltic.__main__ import main
 from baltic.analysis import checks, hypotheses, report
+from baltic.stats import Estimate
+from baltic.stream.monitor import read_slots
 
 
 def test_h1_detects_the_larger_share(month):
@@ -29,6 +32,27 @@ def test_h2_negative_off_security_and_same_on_security(month):
     assert h2["H2b verdict"] in {"same within the margin", "no detectable difference"}
 
 
+NON_SEC_OK, NON_SEC_MIXED = [(-1.5, -0.5), (-0.6, -0.1)], [(-1.5, -0.5), (-0.6, 0.2)]
+
+
+@pytest.mark.parametrize(
+    ("cis", "expected"),
+    [  # (non-security CIs, security CIs) of the two reference groups -> (H2a, H2b)
+        ((NON_SEC_OK, [(-0.4, 0.4), (-0.1, 0.1)]), (True, "same within the margin")),
+        ((NON_SEC_MIXED, [(-0.6, 0.4), (-0.1, 0.1)]), (False, "no detectable difference")),
+        ((NON_SEC_OK, [(0.1, 0.9), (-0.1, 0.1)]), (True, "different")),
+    ],
+)
+def test_h2_decision_rules(month, monkeypatch, cis, expected):
+    monkeypatch.setattr(
+        hypotheses,
+        "tone_differences",
+        lambda _a, sec: {f"ref{i}": Estimate(0, lo, hi) for i, (lo, hi) in enumerate(cis[sec])},
+    )
+    h2 = hypotheses.h2(month[0])
+    assert (h2["H2a accepted"], h2["H2b verdict"]) == expected
+
+
 def test_h2b_reports_a_real_security_difference(month):
     articles, _, _ = month
     shifted = articles.assign(
@@ -38,14 +62,29 @@ def test_h2b_reports_a_real_security_difference(month):
 
 
 def test_reconcile_passes_on_equal_counts_and_fails_on_a_lost_file(layout, month):
-    articles, domain_day, series = month
-    write_lake(layout.lake.root, articles, domain_day, series)
-    rows = domain_day.groupby(pd.to_datetime(domain_day.dt).dt.strftime("%Y%m%d")).n_rows.sum()
-    rel = articles.groupby(articles.ts.str[:8]).size()
-    ref = {d: {"rows": int(rows[d]), "relevant": int(rel[d])} for d in rows.index}
+    write_lake(layout.lake.root, *month)
+    ref = reference_of(month)
     assert checks.reconcile(layout.lake, ref)["ok"] == 10
     ref[min(ref)]["rows"] += 1
     assert checks.reconcile(layout.lake, ref)["ok"] == 9
+
+
+def reference_of(month):
+    """The per-day counts an independent collector would report for the month."""
+    articles, domain_day, _ = month
+    rows = domain_day.groupby(pd.to_datetime(domain_day.dt).dt.strftime("%Y%m%d")).n_rows.sum()
+    rel = articles.groupby(articles.ts.str[:8]).size()
+    return {d: {"rows": int(rows[d]), "relevant": int(rel[d])} for d in rows.index}
+
+
+def test_the_checks_exit_zero_only_when_they_pass(layout, month, monkeypatch):
+    write_lake(layout.lake.root, *month)
+    monkeypatch.setattr(checks, "reference", lambda: reference_of(month))
+    assert main(["--data", str(layout.root), "reconcile"]) == 0
+    monkeypatch.setattr(checks, "reference", dict)
+    assert main(["--data", str(layout.root), "reconcile"]) == 1  # nothing compared is no pass
+    ts = stream_and_lake(layout, month)
+    assert main(["--data", str(layout.root), "stream-vs-batch", "--horizon", ts[-1]]) == 0
 
 
 def test_the_vendored_reference_covers_september():
@@ -80,8 +119,6 @@ def stream_and_lake(layout, month, drop=None, change=None):
 
 def test_stream_equals_batch(layout, month):
     ts = stream_and_lake(layout, month)
-    from baltic.stream.monitor import read_slots
-
     r = checks.stream_vs_batch(read_slots(layout.slots), layout.live_lake, ts[-1])
     assert (
         r["ok"]
@@ -93,8 +130,6 @@ def test_stream_equals_batch(layout, month):
 
 def test_stream_vs_batch_catches_a_missing_and_a_wrong_slot(layout, month):
     ts = stream_and_lake(layout, month, drop=5, change=9)
-    from baltic.stream.monitor import read_slots
-
     r = checks.stream_vs_batch(read_slots(layout.slots), layout.live_lake, ts[-1])
     assert not r["ok"] and r["missing"] == 1 and r["differ"] == 1
 
@@ -105,6 +140,7 @@ def test_scaling_summary_and_the_spark_vs_pool_rule():
     bench = pd.DataFrame(runs, columns=["engine", "days", "workers", "wall_s"])
     s = report.scaling(bench)
     assert round(s["speedup"][8], 2) == round(101 / 13.5, 2) and s["efficiency"][1] == 1.0
+    assert s["efficiency"][8] == pytest.approx(s["speedup"][8] / 8)
     assert s["spark_beats_pool"]  # 13.5 s median < 20 s, the Pool's fastest repeat
     slower = bench.assign(wall_s=bench.wall_s.where(bench.engine == "python", bench.wall_s + 10))
     assert not report.scaling(slower)["spark_beats_pool"]
@@ -122,13 +158,14 @@ def test_live_lag_uses_steady_state_slots_only():
             "about_baltic": [40, 50],
         }
     )
-    live = report.live(slots, [{"group": "ru_by", "slot": "20261001001500"}])
-    assert live["steady_slots"] == 1 and live["lag_p50_s"] == 30 and live["alerts"] == {"ru_by": 1}
+    reclosed = pd.concat([slots, slots.iloc[[1]]])  # at-least-once: a slot written twice
+    live = report.live(reclosed, [{"group": "ru_by", "slot": "20261001001500"}])
+    assert live["slots"] == 2 and live["steady_slots"] == 1 and live["lag_p50_s"] == 30
+    assert live["alerts"] == {"ru_by": 1}
 
 
 def test_report_builds_every_part_from_a_lake(layout, month):
-    articles, domain_day, series = month
-    write_lake(layout.lake.root, articles, domain_day, series)
+    write_lake(layout.lake.root, *month)
     summary = report.build(layout)
     assert {"H1", "H2", "themes", "backtest"} <= summary.keys()
     assert {p.name for p in layout.report.glob("*.png")} == {
@@ -176,20 +213,17 @@ def test_h1_needs_both_control_groups(month):
 
 
 def test_reconcile_tolerates_half_a_percent_of_relevant_articles_and_no_more(layout, month):
-    articles, domain_day, series = month
-    write_lake(layout.lake.root, articles, domain_day, series)
-    rows = domain_day.groupby(pd.to_datetime(domain_day.dt).dt.strftime("%Y%m%d")).n_rows.sum()
-    rel = articles.groupby(articles.ts.str[:8]).size()
-    day = min(rows.index)
-    for relevant, ok in ((round(rel[day] * 1.004), 10), (round(rel[day] * 1.02), 9)):
-        ref = {d: {"rows": int(rows[d]), "relevant": int(rel[d])} for d in rows.index}
+    write_lake(layout.lake.root, *month)
+    day = min(reference_of(month))
+    exact = reference_of(month)[day]["relevant"]
+    for relevant, ok in ((round(exact * 1.004), 10), (round(exact * 1.02), 9)):
+        ref = reference_of(month)
         ref[day]["relevant"] = relevant
         assert checks.reconcile(layout.lake, ref)["ok"] == ok
 
 
 def test_reconcile_fails_on_a_day_the_lake_lacks(layout, month):
-    articles, domain_day, series = month
-    write_lake(layout.lake.root, articles, domain_day, series)
+    write_lake(layout.lake.root, *month)
     ref = {"20260801": {"rows": 1, "relevant": 1}}
     assert checks.reconcile(layout.lake, ref) == {
         "days": {
@@ -202,8 +236,6 @@ def test_reconcile_fails_on_a_day_the_lake_lacks(layout, month):
 
 def test_stream_vs_batch_fails_on_a_stalled_or_empty_monitor(layout, month):
     ts = stream_and_lake(layout, month)
-    from baltic.stream.monitor import read_slots
-
     slots = read_slots(layout.slots)
     stalled = slots[slots.slot <= ts[10]]
     r = checks.stream_vs_batch(stalled, layout.live_lake, ts[-1])
@@ -215,7 +247,5 @@ def test_stream_vs_batch_fails_on_a_stalled_or_empty_monitor(layout, month):
 
 def test_stream_vs_batch_fails_on_a_missing_slot_alone(layout, month):
     ts = stream_and_lake(layout, month, drop=5)
-    from baltic.stream.monitor import read_slots
-
     r = checks.stream_vs_batch(read_slots(layout.slots), layout.live_lake, ts[-1])
     assert not r["ok"] and r["missing"] == 1 and r["differ"] == 0

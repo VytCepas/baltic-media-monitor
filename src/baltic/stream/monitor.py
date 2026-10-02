@@ -144,11 +144,6 @@ class Monitor:
             self.state.save(self.layout.state)
         return closed
 
-    @property
-    def idle(self) -> bool:
-        """Safe to commit the consumer offset."""
-        return self.assembler.idle
-
     def _emit(self, slot: Slot, alerts: list[Alert]) -> None:
         sent = max(slot.done.values(), default=float("nan"))
         record = {
@@ -192,7 +187,7 @@ def consume(monitor: Monitor, bootstrap: str, topic: str, group_id: str = "monit
         if m.error() or not value:  # the client retries broker errors itself: log and move on
             log.warning("skipped message: %s", m.error() or "empty value")
             continue
-        if monitor.handle(json.loads(value)) and monitor.idle:
+        if monitor.handle(json.loads(value)) and monitor.assembler.idle:
             consumer.commit(asynchronous=False)
 
 
