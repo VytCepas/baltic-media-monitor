@@ -70,8 +70,7 @@ def load(lake: Lake) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Sources (ru_by about the Baltics) and candidates (Baltic outlets), each with minutes in `t`."""
     df = pd.read_parquet(lake.silver, columns=COLUMNS)
     df = df[df.about_baltic & (df.title.str.len() > 15)].copy()
-    # minutes since the epoch; as_unit: pandas 3 parses to microseconds
-    df["t"] = pd.to_datetime(df.ts, format=gdelt.TS).dt.as_unit("s").astype("int64") // 60
+    df["t"] = gdelt.epoch_s(df.ts) // 60  # minutes since the epoch
     src = df[df.group == "ru_by"].reset_index(drop=True)
     dst = df[df.group.isin(TARGETS)].sort_values("t").reset_index(drop=True)
     return src, dst

@@ -59,6 +59,10 @@ services:
     image: embedder:local
     profiles: [ ai ]
     ports: [ "127.0.0.1:8080:8080" ]
+    healthcheck:                                         # `just embedder` (--wait) waits for the model
+      test: [ "CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8080/healthz')" ]
+      interval: 5s
+      retries: 60
 
 volumes:
   kafka-data:

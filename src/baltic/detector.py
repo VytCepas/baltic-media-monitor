@@ -22,7 +22,7 @@ class Alert(TypedDict):
     """One spike: the group, the slot it was detected in, the observed and the usual rolling-hour count."""
 
     group: str
-    slot: str
+    slot: str  # slot timestamp, YYYYMMDDHHMMSS
     observed: int
     expected: float
     score: float
@@ -65,7 +65,7 @@ class SpikeDetector:
                     alerts.append(
                         Alert(
                             group=g,
-                            slot=slot.isoformat(),
+                            slot=gdelt.to_ts(slot),
                             observed=observed,
                             expected=usual,
                             score=round(score, 2),

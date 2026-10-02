@@ -110,9 +110,15 @@ def test_spark_and_the_baseline_agree_and_the_lake_is_written(layout):
     from baltic.batch import etl
 
     files = raw_month(layout)
+    distinct = baseline.run(files, 1)["relevant"]
+    # GDELT re-lists an article in a later file now and then: the same ids again
+    again = layout.raw("en", gdelt.shift(TS, len(files)))
+    again.write_bytes(layout.raw("en", TS).read_bytes())
+    files = layout.raw_files("2026-09-30", 1)
     measured = etl.run(files, 2, None)
     written = etl.run(files, 2, layout.lake)
     plain = baseline.run(files, 1)
     for k in ("files", "rows", "relevant"):
         assert measured[k] == written[k] == plain[k]
+    assert plain["relevant"] == distinct  # rows count twice, articles once
     assert layout.lake.done and (layout.lake.silver / "dt=2026-09-30").is_dir()

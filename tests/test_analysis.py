@@ -122,8 +122,8 @@ def test_live_lag_uses_steady_state_slots_only():
             "about_baltic": [40, 50],
         }
     )
-    live = report.live(slots)
-    assert live["steady_slots"] == 1 and live["lag_p50_s"] == 30 and live["alerts"] == 1
+    live = report.live(slots, [{"group": "ru_by", "slot": "20261001001500"}])
+    assert live["steady_slots"] == 1 and live["lag_p50_s"] == 30 and live["alerts"] == {"ru_by": 1}
 
 
 def test_report_builds_every_part_from_a_lake(layout, month):

@@ -114,7 +114,7 @@ def test_detector_sample_mixes_strong_alerts_with_quiet_busy_hours():
     alerts = [
         {
             "group": "ru_by",
-            "slot": "2026-09-01T12:00:00",
+            "slot": "20260901120000",
             "observed": 40,
             "expected": 2.0,
             "score": 9.0,

@@ -1,4 +1,7 @@
-"""H1 and H2, each decided by a rule fixed before the 30-day data was seen.
+"""H1 and H2, each decided by a rule fixed before the hypothesis tests ran.
+
+Disclosed: an exploratory pass over the 30 days (articles about the Baltics and overall tone per group, a
+first shared-name pairing; no security split, no CIs) came before the rules were written down.
 
 Every comparison is a difference of ratios of sums with a domain-clustered bootstrap CI (stats.py).
 Tone is GDELT's positive % minus negative % of words: a difference is "tone points", never a ratio.
@@ -16,7 +19,7 @@ import pandas as pd
 
 from baltic.stats import Estimate, ratio_difference
 
-MARGIN = 0.5  # H2b equivalence margin in tone points, fixed in the plan before the 30-day run
+MARGIN = 0.5  # H2b equivalence margin in tone points, fixed in the plan before the tests ran
 
 
 def _clusters(df: pd.DataFrame, num: str, den: str) -> tuple[np.ndarray, np.ndarray]:

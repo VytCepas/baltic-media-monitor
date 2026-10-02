@@ -15,7 +15,8 @@ is downloaded or stored.
 - **H2b:** on security stories, ru_by tone is the same as everyone else's (±0.5 tone points).
 - **H3:** multilingual embeddings find "the same story" more precisely than shared names do, at equal coverage.
 
-Each is decided by a rule fixed before the 30-day data was seen, with domain-clustered bootstrap CIs.
+Each is decided by a rule fixed before the tests ran, with domain-clustered bootstrap CIs. Disclosed: an
+exploratory 30-day pass (per-group counts and overall tone, no security split, no CIs) came before the rules.
 
 ## Architecture: Lambda, on one VM plus one serverless model
 
@@ -70,12 +71,12 @@ and a private bucket mirrors the data tree. Everything is created by `infra/up.s
 | 2.3 performance, scalability | E1 data size, E2 cores, E3 same map in a process pool; Kafka lag; crash recovery | `just bench` → `bench/*.json`; `just crash-test` |
 | 3.1 containers, cloud | one image for every step, Compose, VM + Cloud Run + bucket | `infra/up.sh`; `gs://…/logs/ccbd.log` |
 | 3.2 demo, evaluation | blind labels: matcher precision per stratum, detector vs control hours | `just sample` → label → `just evaluate` |
-| 3.3 summary, future work | report §3.3, atlas "Future work" | — |
+| 3.3 summary, future work | report §3.3 | — |
 
 ## Run it
 
 ```bash
-just setup && just ci && just red-check     # gates: lint, strict types, tests + coverage, mutations
+just ci                                     # gates: lint, strict types, tests + coverage, mutations
 just test-image                             # the tests inside the image (Java: the Spark test runs too)
 SINCE=20261001000000 just up                # Kafka + producer
 just mirror 2026-09-01 30 && just etl 2026-09-01 30 && just reconcile

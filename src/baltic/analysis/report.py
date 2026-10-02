@@ -4,6 +4,7 @@ Each part is skipped while its input does not exist yet, so the report can be re
 """
 
 import json
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,7 @@ COLOR = {
     "baltic_rus": "#8e44ad",
 }
 STEADY_S = 3600  # a slot closed within an hour of its end was not part of a catch-up
+E2_DAYS = 7  # E2 (cores) is measured on this many days
 
 
 def save(fig: Figure, path: Path) -> None:
@@ -93,7 +95,7 @@ def tone_figure(h2: dict[str, Any], path: Path) -> None:
     save(fig, path)
 
 
-def scaling(bench: pd.DataFrame, days: int = 7) -> dict[str, Any]:
+def scaling(bench: pd.DataFrame, days: int = E2_DAYS) -> dict[str, Any]:
     """Median and range of the repeats per configuration, E2 speed-up and efficiency, the E3 rule."""
     runs = bench.groupby(["engine", "days", "workers"]).wall_s.agg(
         ["median", "min", "max", "count"]
@@ -126,12 +128,15 @@ def scaling_figure(bench: pd.DataFrame, path: Path) -> None:
     left.set(xlabel="days of GDELT (both feeds)", ylabel="wall time, s", title="E1 data size")
     if left.get_legend_handles_labels()[0]:
         left.legend()
-    spark7 = bench[(bench.engine == "spark") & (bench.days == 7)].groupby("workers").wall_s.median()
-    if len(spark7) > 1:
-        right.plot(spark7.index, spark7.iloc[0] / spark7, "o-", label="measured")
-        right.plot(spark7.index, spark7.index / spark7.index[0], "--", label="ideal")
+    spark = bench[(bench.engine == "spark") & (bench.days == E2_DAYS)]
+    e2 = spark.groupby("workers").wall_s.median()
+    if len(e2) > 1:
+        right.plot(e2.index, e2.iloc[0] / e2, "o-", label="measured")
+        right.plot(e2.index, e2.index / e2.index[0], "--", label="ideal")
         right.set(
-            xlabel="Spark worker threads (local[n])", ylabel="speed-up", title="E2 cores, 7 days"
+            xlabel="Spark worker threads (local[n])",
+            ylabel="speed-up",
+            title=f"E2 cores, {E2_DAYS} days",
         )
         right.legend()
     save(fig, path)
@@ -145,27 +150,25 @@ def detector_figure(table: pd.DataFrame, alerts: list[Any], path: Path) -> None:
     for g in table.columns:
         ax.plot(times, table[g].rolling(4).sum(), lw=0.7, color=COLOR[g], label=LABEL[g])
     for a in alerts:
-        ax.axvline(pd.Timestamp(a["slot"]), color=COLOR[a["group"]], alpha=0.4)  # type: ignore[arg-type]
+        t = gdelt.to_time(a["slot"])  # a datetime: matplotlib converts it, its stubs say float
+        ax.axvline(t, color=COLOR[a["group"]], alpha=0.4)  # type: ignore[arg-type]
     ax.set_yscale("symlog")
     ax.legend(ncol=5, loc="upper center", bbox_to_anchor=(0.5, -0.1), frameon=False)
     ax.set_title(f"Security coverage of the Baltics, rolling hour; {len(alerts)} alerts")
     save(fig, path)
 
 
-def live(slots: pd.DataFrame) -> dict[str, Any]:
-    """The speed layer in operation: slots closed, alerts, steady-state pipeline lag."""
+def live(slots: pd.DataFrame, alerts: list[dict[str, Any]]) -> dict[str, Any]:
+    """The speed layer in operation: slots closed, alerts per group, steady-state pipeline lag."""
     slots = slots.drop_duplicates("slot", keep="last")
-    end = (
-        pd.to_datetime(slots.slot, format=gdelt.TS).dt.as_unit("s").astype("int64")
-        + gdelt.SLOT.seconds
-    )
+    end = gdelt.epoch_s(slots.slot) + gdelt.SLOT.seconds
     steady = slots[slots.closed_at - end < STEADY_S]
     lag = steady.closed_at - steady.sent_at
     return {
         "slots": len(slots),
         "first": slots.slot.min(),
         "last": slots.slot.max(),
-        "alerts": int(slots.alerts.sum()),
+        "alerts": dict(Counter(a["group"] for a in alerts)),
         "steady_slots": len(steady),
         "lag_p50_s": float(lag.median()) if len(lag) else None,
         "lag_p95_s": float(lag.quantile(0.95)) if len(lag) else None,
@@ -195,7 +198,8 @@ def build(layout: Layout) -> dict[str, Any]:
         summary["scaling"] = scaling(bench)
         scaling_figure(bench, out / "4_scaling.png")
     if layout.slots.exists():
-        summary["live"] = live(read_slots(layout.slots))
+        lines = layout.alerts.read_text().splitlines() if layout.alerts.exists() else []
+        summary["live"] = live(read_slots(layout.slots), [json.loads(x) for x in lines])
     if layout.evaluation.exists():
         summary["ai"] = json.loads(layout.evaluation.read_text())
     (out / "summary.json").write_text(json.dumps(summary, indent=1, default=str))

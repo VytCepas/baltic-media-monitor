@@ -23,8 +23,8 @@ MUTATIONS = [
     (
         "archive after ack",
         "src/baltic/stream/producer.py",
-        "                self.sink.publish(feed, ts, _articles(data, feed))\n                if data is None:",
-        "                if data is not None:\n                    write_atomic(self.layout.raw(feed, ts), data)\n                self.sink.publish(feed, ts, _articles(data, feed))\n                if data is None:",
+        "                n = self.sink.publish(feed, ts, _articles(data, feed))\n                if data is None:",
+        "                if data is not None:\n                    write_atomic(self.layout.raw(feed, ts), data)\n                n = self.sink.publish(feed, ts, _articles(data, feed))\n                if data is None:",
         "tests/test_producer.py::test_a_file_is_archived_only_after_the_sink_confirmed_it",
     ),
     (

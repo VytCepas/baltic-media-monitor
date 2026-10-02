@@ -43,17 +43,15 @@ class Slot:
     about: int = 0
     security: Counter[str] = field(default_factory=Counter)
     done: dict[str, float] = field(default_factory=dict)  # feed -> producer's send time
-    announced: dict[str, int] = field(
-        default_factory=dict
-    )  # feed -> distinct ids the producer sent
+    # feed -> distinct ids the producer sent
+    announced: dict[str, int] = field(default_factory=dict)
 
     def add(self, msg: dict[str, Any]) -> None:
         """Count an article (once per id) or record a feed's 'done' marker."""
         if msg["kind"] == "done":
             self.done[msg["feed"]] = msg["sent_at"]
-            self.announced[msg["feed"]] = msg.get(
-                "ids", 0
-            )  # markers sent before the count existed: 0
+            # markers sent before the count existed (still in Kafka's 14 days): announce 0
+            self.announced[msg["feed"]] = msg.get("ids", 0)
         elif msg["id"] not in (seen := self.ids.setdefault(msg["feed"], set())):
             seen.add(msg["id"])
             self.about += msg["about_baltic"]

@@ -41,6 +41,11 @@ def shift(ts: str, slots: int) -> str:
     return to_ts(to_time(ts) + slots * SLOT)
 
 
+def epoch_s(ts: pd.Series) -> pd.Series:
+    """Slot timestamps -> seconds since the epoch (as_unit: pandas 3 parses to microseconds)."""
+    return pd.to_datetime(ts, format=TS).dt.as_unit("s").astype("int64")
+
+
 def slots(first: str, last: str) -> list[str]:
     """Every slot timestamp from first to last, inclusive, oldest first."""
     return list(pd.date_range(to_time(first), to_time(last), freq=SLOT).strftime(TS))

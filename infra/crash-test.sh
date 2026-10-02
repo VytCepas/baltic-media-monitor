@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Fault tolerance: kill -9 the monitor, keep ingesting for N minutes, restart it, and time the catch-up.
-# Kafka buffers what the monitor missed; at-least-once + the saved state mean nothing is lost or doubled
-# (afterwards: `just etl-live ...` and `just stream-vs-batch` prove it).   usage: crash-test.sh MINUTES
+# Kafka buffers what the monitor missed; at-least-once + the saved state mean nothing is lost, and a
+# slot closed twice (crash between writing it and saving state) shows up as a counted duplicate line
+# (afterwards: `just etl-live ...` and `just stream-vs-batch` prove both).   usage: crash-test.sh MINUTES
 #
 # "Caught up" = the monitor closed the newest slot archived when it restarted. Kafka's committed lag is
 # not the measure: the monitor commits only while no slot is half-read, so it rarely shows exactly 0.

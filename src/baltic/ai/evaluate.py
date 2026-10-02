@@ -10,7 +10,6 @@ The labeller sees neither the method nor whether an hour alerted. `score` joins 
 """
 
 from dataclasses import asdict
-from datetime import datetime
 from typing import Any
 
 import pandas as pd
@@ -62,7 +61,7 @@ def hours(table: pd.DataFrame, alerts: list[Alert]) -> pd.DataFrame:
     """Every (slot, group) with its rolling-hour count and whether the detector alerted there."""
     hourly = table.rolling(4, min_periods=1).sum().rename_axis(index="ts").reset_index()
     long = hourly.melt(id_vars="ts", var_name="group", value_name="count")
-    alerted = {(gdelt.to_ts(datetime.fromisoformat(a["slot"])), a["group"]) for a in alerts}
+    alerted = {(a["slot"], a["group"]) for a in alerts}
     long["alert"] = [(t, g) in alerted for t, g in zip(long.ts, long.group, strict=True)]
     return long
 
@@ -75,11 +74,7 @@ def sample_slots(
     strongest = pd.DataFrame(
         sorted(alerts, key=lambda a: -a["score"])[:n], columns=list(Alert.__annotations__)
     )
-    picked = h.merge(
-        strongest.assign(ts=[gdelt.to_ts(datetime.fromisoformat(s)) for s in strongest.slot])[
-            ["ts", "group"]
-        ]
-    )
+    picked = h.merge(strongest.rename(columns={"slot": "ts"})[["ts", "group"]])
     quiet = h[~h.alert & (h["count"] >= BUSY)]
     items = pd.concat([picked, quiet.sample(min(n, len(quiet)), random_state=SEED)])
     security = articles[articles.about_baltic & articles.security]
@@ -94,12 +89,8 @@ def sample_slots(
 
 def score(sheet: pd.DataFrame, key: pd.DataFrame, by: str) -> dict[str, Any]:
     """Share of 'y' labels per value of `by`, with Wilson intervals; unlabelled items are left out."""
-    answer = {
-        "y": "y",
-        "yes": "y",
-        "n": "n",
-        "no": "n",
-    }  # anything else ("not sure", "?") is left out
+    # anything else ("not sure", "?") is left out
+    answer = {"y": "y", "yes": "y", "n": "n", "no": "n"}
     labels = sheet.set_index("item").label.astype(str).str.strip().str.lower().map(answer)
     done = key.assign(label=key["item"].map(labels)).dropna(subset=["label"])
     out = {}

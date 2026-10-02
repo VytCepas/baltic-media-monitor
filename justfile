@@ -1,95 +1,38 @@
-# justfile — the canonical command interface (scaffolded by project-init).
-# `just --list` shows every recipe. Recipes are thin wrappers — logic lives
-# in the tools and their configs, never in this file.
+# justfile: every command this project uses (`just --list`). Recipes are thin wrappers; the logic lives in
+# the code and the tool configs.
 
-# install/sync dev dependencies (PEP 735 dependency-group; add tools with `uv add --dev`).
-# A fresh scaffold has no pyproject.toml (or one without [dependency-groups])
-# yet — `uv sync --group dev` hard-fails on both, which would break CI's first
-# step before the day-one guards in typecheck/test-cov can even run.
-[doc("install/sync dev dependencies (PEP 735 dependency-group; add tools with `uv add --dev`).")]
+# the locked dependencies, dev tools included
 setup:
-    sh -c 'if [ ! -f pyproject.toml ]; then echo "No pyproject.toml yet — nothing to sync."; elif grep -q "^\[dependency-groups\]" pyproject.toml; then uv sync --group dev; else uv sync; fi'
+    uv sync --locked --group dev
 
-# lint project code (docstring + complexity gates per ruff.toml).
-# `ruff format --check` verifies formatting without writing — `just format`
-# writes. Without this, an unformatted file merged green (#726).
-[doc("lint project code (docstring + complexity gates per ruff.toml).")]
+# lint, format check, shell scripts
 lint:
     uv run ruff check .
     uv run ruff format --check .
-    sh -c 'if command -v shellcheck >/dev/null 2>&1; then find .agents infra -name "*.sh" -exec shellcheck -S error -x {} +; else echo "shellcheck not installed — skipping shell lint (CI still runs it). Install: https://github.com/koalaman/shellcheck#installing or run \`mise install\`."; fi'
-    sh -c 'if command -v shfmt >/dev/null 2>&1; then find .agents -name "*.sh" -exec shfmt -d -i 2 {} +; else echo "shfmt not installed — skipping shfmt check (CI still runs it). Install: https://github.com/mvdan/sh#shfmt or run \`mise install\`."; fi'
-    bash .agents/scripts/lint_context_budget.sh
-    uv run python .agents/scripts/check_test_contract.py exit-codes
-    uv run --with pytest python .agents/scripts/check_test_contract.py discovery
+    shellcheck -S warning infra/*.sh
 
-# static type check (strict mode per mypy.ini; add mypy with `uv add --dev mypy`)
-# no-op on a fresh scaffold with no src/ yet — mypy errors on a missing path.
-# --install-types fetches missing dependency stubs (types-PyYAML etc.) so
-# untyped deps don't fail the strict gate with import-untyped (#592); it
-# shells out to pip, which uv-managed environments omit — hence --with pip.
-[doc("static type check (strict mode per mypy.ini; add mypy with `uv add --dev mypy`)")]
-typecheck:
-    if [ -d src ]; then uv run --with "mypy>=1.10" --with pip mypy --install-types --non-interactive src/; else echo "No src/ directory yet — nothing to type-check."; fi
-
-# auto-format project code
+# auto-format
 format:
     uv run ruff format .
 
-# run the test suite (xdist pulled in on demand so -n works without declaring it).
-# The cross-repo test contract (PI-1044): it ends with `<project>: N passed, M failed`,
-# printed by the root conftest.py, and exits with pytest's own code.
-[doc("run the test suite; ends with `<project>: N passed, M failed` (the test contract)")]
+# strict type check of the package
+typecheck:
+    uv run mypy src/
+
+# the test suite (Spark's test is skipped without a JVM: `just test-image` runs it)
 test:
-    sh -c 'if find tests -type f \( -name "test_*.py" -o -name "*_test.py" \) 2>/dev/null | grep -q .; then uv run --with pytest-xdist pytest -n auto --tb=short -q; else echo "No test files yet — nothing to test."; echo "baltic-media-monitor: 0 passed, 0 failed"; fi'
+    uv run pytest -n auto -q
 
-# fail-fast quiet run for the edit-test loop (token-efficiency; PI-641) —
-# stops at the first failure so agents ingest one traceback, not the suite's
-[doc("fail-fast quiet run for the edit-test loop (token-efficiency; PI-641)")]
-test-quick:
-    sh -c 'if find tests -type f \( -name "test_*.py" -o -name "*_test.py" \) 2>/dev/null | grep -q .; then uv run --with pytest pytest -x -q --tb=short; else echo "No test files yet — nothing to test."; fi'
-
-# tests with the coverage gate (what CI runs, not `test`).
-# without src/ yet, still run the plain test suite (tests/ may exist before
-# src/ does) — only the coverage instrumentation/threshold is skipped, since
-# 0% coverage on zero application code would trip --cov-fail-under before any
-# code exists. Silently skipping pytest entirely here would let a real test
-# failure through `just ci` unnoticed.
-[doc("tests with the coverage gate (what CI runs, not `test`).")]
+# the tests with the coverage gate
 test-cov:
-    sh -c 'if [ -d src ]; then uv run --with pytest-xdist --with pytest-cov pytest -n auto --tb=short -q --cov=src --cov-fail-under=80; elif find tests -type f \( -name "test_*.py" -o -name "*_test.py" \) 2>/dev/null | grep -q .; then uv run --with pytest-xdist pytest -n auto --tb=short -q; else echo "No src/ or test files yet — nothing to test."; fi'
+    uv run pytest -n auto -q --cov=src --cov-fail-under=80
 
-# dependency vulnerability scan against known CVEs/advisories (PI-568).
-# complements package_guard.py, which only blocks installing a package that
-# doesn't exist or looks typosquatted — this catches a real, correctly-
-# spelled dependency with a known vulnerability already in the lockfile.
-[doc("dependency vulnerability scan against known CVEs/advisories (PI-568).")]
+# known vulnerabilities in the locked dependencies
 audit:
-    sh -c 'if [ -f pyproject.toml ] || [ -f requirements.txt ] || [ -f uv.lock ]; then uv run --with pip-audit pip-audit; else echo "No Python dependency manifest yet — nothing to audit."; fi'
+    uv run --with pip-audit pip-audit
 
-# generate a CycloneDX SBOM of the runtime dependency tree, on demand.
-# --no-dev so it reflects what ships; uvx keeps cyclonedx-py out of the scanned .venv.
-[doc("generate a CycloneDX SBOM of the runtime dependency tree (#574)")]
-sbom:
-    uv sync --no-dev
-    uvx --from cyclonedx-bom cyclonedx-py environment .venv -o sbom.cdx.json
-
-# dependency license compliance scan (#579), on demand — fail on copyleft (GPL/AGPL;
-# also LGPL, since --partial-match is substring-based).
-[doc("dependency license compliance scan (#579)")]
-license:
-    uv run --with pip-licenses pip-licenses --from=mixed --fail-on "GPL;AGPL" --partial-match
-
-# the local full gate: CI's checks (.github/workflows/ci.yml), the scaffold lints and the CVE audit
+# CI's checks (.github/workflows/ci.yml), plus the vulnerability audit
 ci: setup lint typecheck test-cov red-check audit
-
-# scan staged changes for secrets (same scan as the pre-commit git hook)
-scan:
-    gitleaks git --pre-commit --staged --redact --no-banner --verbose
-
-# regenerate .agents/docs/CODE_MAP.md (low-token "what does what" map; read before grepping)
-code-map:
-    uv run python .agents/scripts/gen_code_map.py
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +115,7 @@ crash-test minutes="10":
 # the test suite inside the image, where Java runs the Spark test too
 test-image:
     docker compose build -q job
-    docker compose run --rm --user root --entrypoint sh -v ./tests:/app/tests:ro -v ./conftest.py:/app/conftest.py:ro job -c 'uv sync --frozen --group dev -q && pytest tests -q -p no:cacheprovider'
+    docker compose run --rm --user root --entrypoint sh -v ./tests:/app/tests:ro job -c 'uv sync --frozen --group dev -q && pytest tests -q -p no:cacheprovider'
 
 # every guarded behaviour broken once: its test must go red
 red-check:

@@ -103,12 +103,12 @@ class Ingestor:
                         json.dumps({"event": "waiting", "feed": feed, "ts": ts, "status": 404})
                     )
                     return published  # retry next poll; never skip ahead (time order)
-                self.sink.publish(feed, ts, _articles(data, feed))
+                n = self.sink.publish(feed, ts, _articles(data, feed))
                 if data is None:  # GDELT skipped this file: tell consumers, remember it
                     write_atomic(self.layout.missing(feed, ts), b"")
                 else:
                     write_atomic(self.layout.raw(feed, ts), data)
-                log.info(json.dumps({"event": "published", "feed": feed, "ts": ts}))
+                log.info(json.dumps({"event": "published", "feed": feed, "ts": ts, "articles": n}))
                 published += 1
         return published
 
