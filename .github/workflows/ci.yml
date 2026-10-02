@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - run: uv sync --locked --group dev
+      - name: Lint and format
+        run: uv run ruff check . && uv run ruff format --check .
+      - name: Strict types
+        run: uv run mypy src/
+      - name: Shell scripts
+        run: shellcheck -S warning infra/*.sh
+      - name: Tests and coverage (the runner's Java 17 also runs the Spark test)
+        run: uv run pytest -n auto -q --cov=src --cov-fail-under=80
+      - name: Mutation check (every guarded behaviour must turn its test red)
+        run: uv run python tests/red_check.py

@@ -1,0 +1,66 @@
+# pyproject.toml — scaffolded by project-init (PI-932).
+#
+# WHY THIS FILE SHIPS AT ALL. Without it a fresh `--language python` scaffold has
+# RED CI on its first push, before a line of project code exists: `uv sync` has
+# nothing to install, so `just lint` dies with "Failed to spawn: ruff" and
+# `just license` dies the same way. The first thing a new project taught its
+# author was that a red badge is normal.
+#
+# The alternative — guarding `lint` and `license` the way `setup` is guarded —
+# was argued down in PI-932 and the argument is worth keeping here: a lint recipe
+# that lints nothing reads green while checking zero files, and green gets
+# trusted where red gets fixed. Guarding belongs on the UPGRADE path for projects
+# that already have no pyproject.toml, never on a fresh scaffold.
+#
+# EVERY PIN HERE IS A FLOOR, NOT A CEILING. `>=` throughout, so Renovate moves
+# them and a fresh scaffold never starts life a year behind.
+
+[project]
+name = "baltic-media-monitor"
+version = "0.1.0"
+description = "GDELT-based monitor of how Russian, foreign and Baltic outlets cover the Baltics (CCBD coursework)"
+requires-python = ">=3.12"
+# Deliberately empty rather than absent: an empty list is a decision a reader can
+# see, and `uv add` appends to it without first having to create it.
+dependencies = [
+    "confluent-kafka>=2.11",
+    "google-auth>=2.40",
+    "matplotlib>=3.11.2",
+    "numpy>=2.5.3",
+    "pandas>=3.0.6",
+    "pyarrow>=25.0.1",
+    "pyspark>=4.0",
+    "requests>=2.34.2",
+    "scipy>=1.16",
+]
+
+# PEP 735, which is what `just setup` looks for — it greps for this exact header
+# and falls back to a plain `uv sync` when it is missing. The tools below are
+# every tool the scaffolded configs and CI jobs already assume exists:
+# ruff.toml -> ruff, mypy.ini -> mypy, the `test-cov` recipe -> pytest,
+# pytest-cov and pytest-xdist.
+[dependency-groups]
+dev = [
+    "mypy>=1.18",
+    "pandas-stubs>=3.0.5.260914",
+    "pytest>=8.4",
+    "pytest-cov>=6.0",
+    "pytest-xdist>=3.6",
+    "ruff>=0.14",
+    "scipy-stubs>=1.18.1.1",
+    "types-requests>=2.33.0.20260906",
+]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+# src layout, because the rest of the scaffold already assumes it: mypy.ini
+# checks `src/`, the coverage gate passes `--cov=src`, and CI's CODE_MAP step
+# walks it. A flat layout here would leave three configs pointing at nothing.
+[tool.hatch.build.targets.wheel]
+packages = ["src/baltic"]
+
+[project.scripts]
+baltic = "baltic.__main__:main"
+
