@@ -187,6 +187,32 @@ def test_reconcile_tolerates_half_a_percent_of_relevant_articles_and_no_more(lay
         assert checks.reconcile(layout.lake, ref)["ok"] == ok
 
 
+def test_reconcile_fails_on_a_day_the_lake_lacks(layout, month):
+    articles, domain_day, series = month
+    write_lake(layout.lake.root, articles, domain_day, series)
+    ref = {"20260801": {"rows": 1, "relevant": 1}}
+    assert checks.reconcile(layout.lake, ref) == {
+        "days": {
+            "20260801": {"rows": 0, "ref_rows": 1, "relevant_diff": 1.0, "ok": False},
+        },
+        "ok": 0,
+        "of": 1,
+    }
+
+
+def test_stream_vs_batch_fails_on_a_stalled_or_empty_monitor(layout, month):
+    ts = stream_and_lake(layout, month)
+    from baltic.stream.monitor import read_slots
+
+    slots = read_slots(layout.slots)
+    stalled = slots[slots.slot <= ts[10]]
+    r = checks.stream_vs_batch(stalled, layout.live_lake, ts[-1])
+    assert not r["ok"] and r["missing"] == len(ts) - 11
+    assert not checks.stream_vs_batch(slots[:0], layout.live_lake, ts[-1])["ok"]
+    later = checks.stream_vs_batch(stalled, layout.live_lake, ts[-1], start=ts[5])
+    assert later["slots"] == 6 and later["missing"] == len(ts) - 11
+
+
 def test_stream_vs_batch_fails_on_a_missing_slot_alone(layout, month):
     ts = stream_and_lake(layout, month, drop=5)
     from baltic.stream.monitor import read_slots

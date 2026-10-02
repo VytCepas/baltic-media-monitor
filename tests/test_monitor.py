@@ -1,8 +1,10 @@
 import json
 
+import pytest
 from fakes import art, done
 
 from baltic import gdelt
+from baltic.stream import monitor
 from baltic.stream.monitor import Monitor, SlotAssembler, State, read_slots
 
 A, B, C = "20261001000000", "20261001001500", "20261001003000"
@@ -59,9 +61,10 @@ def test_only_security_articles_about_the_baltics_are_counted():
 def test_a_lost_marker_stalls_at_most_one_day():
     s = SlotAssembler()
     s.add(done(A, "en"))  # tr marker of A never arrives
-    late = gdelt.shift(A, 97)
-    closed = s.add(done(late, "en")) + s.add(done(late, "tr"))
-    assert [x.ts for x in closed] == [A, late]
+    day_later = gdelt.shift(A, 96)
+    assert s.add(done(day_later, "en")) + s.add(done(day_later, "tr")) == []
+    late = gdelt.shift(day_later, 1)
+    assert [x.ts for x in s.add(done(late, "en"))] == [A, day_later]
 
 
 def test_monitor_writes_slots_and_resumes_after_a_restart(layout):
@@ -93,3 +96,48 @@ def test_alerts_are_written_as_they_happen(layout):
 def test_cold_state_has_no_history(layout):
     s = State.load(layout.state)
     assert s.last_closed == "" and not s.detector.history
+
+
+class FakeMessage:
+    def __init__(self, msg, error=None):
+        self.msg, self._error = msg, error
+
+    def value(self):
+        return json.dumps(self.msg).encode() if self.msg else b""
+
+    def error(self):
+        return self._error
+
+
+class FakeConsumer:
+    """confluent_kafka.Consumer's surface used by consume(); ends the loop when the messages run out."""
+
+    def __init__(self, messages):
+        self.messages, self.commits = list(messages), []
+
+    def subscribe(self, _topics):
+        pass
+
+    def poll(self, _timeout):
+        if not self.messages:
+            raise StopIteration
+        return self.messages.pop(0)
+
+    def commit(self, asynchronous):
+        self.commits.append((len(self.messages), asynchronous))
+
+
+def test_the_offset_is_committed_only_when_no_slot_is_half_read(layout, monkeypatch):
+    stream = [
+        None,  # poll timeout
+        FakeMessage(None, error="broker hiccup"),
+        FakeMessage(done(B, "en")),
+        FakeMessage(done(A, "en")),
+        FakeMessage(done(A, "tr")),  # closes A while B is half-read: no commit
+        FakeMessage(done(B, "tr")),  # closes B: nothing open, commit
+    ]
+    consumer = FakeConsumer(stream)
+    monkeypatch.setattr(monitor, "Consumer", lambda _conf: consumer)
+    with pytest.raises(StopIteration):
+        monitor.consume(Monitor(layout), "kafka:9092", "gkg.raw")
+    assert consumer.commits == [(0, False)] and read_slots(layout.slots).slot.tolist() == [A, B]

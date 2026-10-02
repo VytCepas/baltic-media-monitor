@@ -37,10 +37,14 @@ def test_mirror_downloads_marks_missing_and_resumes(layout):
     day = gdelt.day_slots("2026-09-30")
     files = {(f, ts): zip_of(rows("sample.gkg.csv")[:1]) for ts in day for f in gdelt.FEEDS}
     del files[("tr", day[5])]
-    first = mirror.mirror(layout, Http({}, files), "2026-09-30", 1)
+    first = mirror.mirror(layout, Http({}, files), "2026-09-30", 1, until="20261001000000")
     assert first == {"downloaded": 191, "missing": 1, "already there": 0}
     assert layout.missing("tr", day[5]).exists()
-    assert mirror.mirror(layout, Http({}, files), "2026-09-30", 1) == {"already there": 192}
+    assert mirror.mirror(layout, Http({}, files), "2026-09-30", 1, "20261001000000") == {
+        "already there": 192
+    }
+    with pytest.raises(ValueError, match="before 20260930234500"):
+        mirror.mirror(layout, Http({}, files), "2026-09-30", 1, until=day[-1])
 
 
 def test_baseline_is_the_same_whatever_the_number_of_processes(layout):

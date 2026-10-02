@@ -52,14 +52,14 @@ def test_a_file_is_archived_only_after_the_sink_confirmed_it(layout):
 
 
 def test_a_404_younger_than_a_day_waits_instead_of_skipping(layout):
-    newest = gdelt.shift(SINCE, 8)
+    newest = gdelt.shift(SINCE, 95)  # a day is 96 slots
     sink = ListSink()
     assert Ingestor(layout, sink, gdelt_with(newest, skip={("tr", SINCE)}), SINCE).poll() == 1
     assert sink.published == [("en", SINCE, 3)] and not layout.has("tr", SINCE)
 
 
 def test_an_old_404_is_published_as_missing_and_remembered(layout):
-    newest = gdelt.shift(SINCE, 97)
+    newest = gdelt.shift(SINCE, 96)
     sink = ListSink()
     Ingestor(layout, sink, gdelt_with(newest, skip={("tr", SINCE)}), SINCE).poll()
     assert ("tr", SINCE, 0) in sink.published
@@ -89,6 +89,17 @@ def test_without_since_only_the_last_two_hours_are_fetched(layout):
     assert {ts for _, ts, _ in sink.published} == set(gdelt.slots(gdelt.shift(newest, -7), newest))
 
 
+def test_a_waiting_slot_is_never_skipped_without_since(layout):
+    newest = gdelt.shift(SINCE, 20)
+    http = gdelt_with(newest, skip={("en", newest)})
+    ingestor = Ingestor(layout, ListSink(), http)
+    ingestor.poll()  # waits on en/newest
+    http.newest = {"en": gdelt.shift(newest, 12), "tr": gdelt.shift(newest, 12)}
+    http.files[("en", newest)] = zip_of(with_ts(rows("sample.gkg.csv")[:3], newest))
+    ingestor.poll()  # GDELT moved 3 hours on; the waiting slot must still be fetched
+    assert layout.has("en", newest)
+
+
 def test_a_lagging_feed_does_not_block_the_other(layout):
     en_newest, tr_newest = gdelt.shift(SINCE, 2), SINCE
     http = gdelt_with(en_newest)
@@ -103,7 +114,7 @@ class FakeProducer:
     """confluent_kafka.Producer's surface used by KafkaSink; deliveries of slots in `fail` fail."""
 
     def __init__(self, _conf):
-        self.fail, self.sent, self.pending = set(), [], []
+        self.fail, self.sent, self.pending, self.unflushed = set(), [], [], 0
 
     def produce(self, _topic, value, key, on_delivery):
         self.sent.append(json.loads(value))
@@ -116,7 +127,7 @@ class FakeProducer:
         for on_delivery, key in self.pending:
             on_delivery("broker error" if key in self.fail else None, None)
         self.pending = []
-        return 0
+        return self.unflushed
 
 
 def test_kafka_sink_sends_articles_then_done_and_one_failure_fails_only_that_file(monkeypatch):
@@ -129,3 +140,11 @@ def test_kafka_sink_sends_articles_then_done_and_one_failure_fails_only_that_fil
     assert sink.publish("tr", "20261001001500", [{"id": "b"}, {"id": "c"}]) == 2
     kinds = [(m["kind"], m["slot"]) for m in sink.producer.sent[2:]]
     assert kinds == [("article", "20261001001500")] * 2 + [("done", "20261001001500")]
+
+
+def test_a_message_kafka_never_confirmed_fails_the_file(monkeypatch):
+    monkeypatch.setattr(producer, "Producer", FakeProducer)
+    sink = producer.KafkaSink("kafka:9092", "gkg.raw")
+    sink.producer.unflushed = 1  # still queued when the flush timed out
+    with pytest.raises(RuntimeError, match="0 failed"):
+        sink.publish("en", SINCE, [{"id": "a"}])

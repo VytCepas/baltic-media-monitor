@@ -15,7 +15,9 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-BASE = "https://data.gdeltproject.org/gdeltv2/"
+# GDELT's bucket via the storage endpoint: the data.gdeltproject.org host caches a 404 for an hour when
+# anyone asked before the upload (seen from GCE: every translated file an hour late).
+BASE = "https://storage.googleapis.com/data.gdeltproject.org/gdeltv2/"
 FEEDS = ("en", "tr")  # English, and ~65 languages machine-translated into English
 INDEX = {"en": BASE + "lastupdate.txt", "tr": BASE + "lastupdate-translation.txt"}
 TS = "%Y%m%d%H%M%S"

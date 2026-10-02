@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 # a 404 younger than a day means "not there yet" (late upload, CDN, throttling): wait, never skip.
 # Skipping too early loses data silently; waiting shows up as lag in the monitor.
 GRACE_SLOTS = 96
-BACKLOG_SLOTS = 8  # without --since, look 2 hours back
+BACKLOG_SLOTS = 8  # without --since, start 2 hours before GDELT's newest file
 
 
 class Sink(Protocol):
@@ -83,15 +83,17 @@ class Ingestor:
     def __init__(
         self, layout: Layout, sink: Sink, http: requests.Session, since: str | None = None
     ) -> None:
-        """since: first slot to publish (YYYYMMDDHHMMSS); default: the last BACKLOG_SLOTS slots."""
+        """since: first slot to publish (YYYYMMDDHHMMSS); default: BACKLOG_SLOTS before the first poll."""
         self.layout, self.sink, self.http, self.since = layout, sink, http, since
 
     def poll(self) -> int:
         """One pass; returns the number of files published. Stops early to keep time order."""
         newest = {feed: gdelt.latest(feed, self.http) for feed in gdelt.FEEDS}
         last = max(newest.values())
+        # fixed once: a sliding window would drop a slot that is still waiting out of view
+        self.since = self.since or gdelt.shift(last, 1 - BACKLOG_SLOTS)
         published = 0
-        for ts in gdelt.slots(self.since or gdelt.shift(last, 1 - BACKLOG_SLOTS), last):
+        for ts in gdelt.slots(self.since, last):
             for feed in gdelt.FEEDS:
                 if ts > newest[feed] or self.layout.has(feed, ts):
                     continue

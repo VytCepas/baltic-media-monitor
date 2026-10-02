@@ -62,3 +62,10 @@ def test_relevant_means_about_the_baltics_or_from_a_baltic_outlet():
 
 def test_malformed_row_is_none():
     assert article.parse(["only", "three", "fields"], "en") is None
+
+
+@pytest.mark.parametrize("tone", ["", "n/a,1"])
+def test_an_empty_or_unreadable_tone_is_unknown(tone):
+    row = rows("sample.gkg.csv")[0]
+    row[Col.TONE] = tone
+    assert article.parse(row, "en")["tone"] is None

@@ -63,7 +63,8 @@ fi
 
 # 7. every boot: Spark over the live window, then stream = batch up to now - 30 min
 DAYS=$(( ($(date -u +%s) - $(date -u -d 2026-10-01 +%s)) / 86400 + 1 ))
-nice just etl-live 2026-10-01 "$DAYS" && just stream-vs-batch
+H=$(date -u -d '30 min ago' +%Y%m%d%H%M%S)  # fixed BEFORE the ETL: later files are not in its lake
+nice just etl-live 2026-10-01 "$DAYS" && just stream-vs-batch --horizon "$H"
 just report
 for d in raw lake-live monitor report; do up "$d"; done
 log "batch pipeline done"

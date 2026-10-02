@@ -127,5 +127,13 @@ def parse(row: list[str], feed: str) -> Article | None:
         themes=themes,
         persons=_names(row[Col.V2_PERSONS], row[Col.PERSONS]),
         orgs=_names(row[Col.V2_ORGS], row[Col.ORGS]),
-        tone=float(row[Col.TONE].split(",")[0]) if row[Col.TONE] else None,
+        tone=_tone(row[Col.TONE]),
     )
+
+
+def _tone(field: str) -> float | None:
+    """The average tone, the first number of the field; None when empty or unreadable."""
+    try:
+        return float(field.split(",")[0])
+    except ValueError:
+        return None

@@ -46,10 +46,12 @@ def seed(_a: Args, layout: Layout) -> int:
 
 
 def mirror(a: Args, layout: Layout) -> int:
-    """Backfill raw files; a failed download stops it with an error (re-run to resume)."""
+    """Backfill raw files before the live window; a failed download stops it (re-run to resume)."""
     from baltic.batch.mirror import mirror as backfill
 
-    print(json.dumps(backfill(layout, gdelt.session(), a.day, a.days)))
+    day_ago = gdelt.to_ts(datetime.now(UTC).replace(tzinfo=None) - timedelta(days=1))
+    until = min(os.environ.get("SINCE") or day_ago, day_ago)
+    print(json.dumps(backfill(layout, gdelt.session(), a.day, a.days, until)))
     return 0
 
 
@@ -159,7 +161,7 @@ def stream_vs_batch(a: Args, layout: Layout) -> int:
     horizon = a.horizon or gdelt.to_ts(
         datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=30)
     )
-    result = checks.stream_vs_batch(read_slots(layout.slots), layout.live_lake, horizon)
+    result = checks.stream_vs_batch(read_slots(layout.slots), layout.live_lake, horizon, a.start)
     (layout.report).mkdir(parents=True, exist_ok=True)
     (layout.report / "stream_vs_batch.json").write_text(json.dumps(result))
     print(json.dumps(result))
@@ -220,7 +222,14 @@ def parser() -> argparse.ArgumentParser:
     command(sample)
     command(evaluate)
     command(reconcile)
-    command(stream_vs_batch, ("--horizon", {"help": "last slot to compare, default now - 30 min"}))
+    command(
+        stream_vs_batch,
+        ("--horizon", {"help": "last slot to compare, default now - 30 min"}),
+        (
+            "--start",
+            {"default": "", "help": "first slot to compare, default the live lake's first"},
+        ),
+    )
     command(report)
     return p
 

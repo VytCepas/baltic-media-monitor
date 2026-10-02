@@ -3,18 +3,21 @@
 usage: just red-check   (exits 1 if any mutation stays green)
 """
 
+import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 R = Path(__file__).resolve().parents[1]
+# no .pyc files: a same-size mutant written within the second of a cached compile would otherwise run
+# the cached ORIGINAL (Python checks a source's mtime in whole seconds) and look caught-proof
+ENV = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
 MUTATIONS = [
     (
         "N1 slot-outer loop",
         "src/baltic/stream/producer.py",
-        "        for ts in gdelt.slots(self.since or gdelt.shift(last, 1 - BACKLOG_SLOTS), last):\n            for feed in gdelt.FEEDS:",
-        "        for feed in gdelt.FEEDS:\n            for ts in gdelt.slots(self.since or gdelt.shift(last, 1 - BACKLOG_SLOTS), last):",
+        "        for ts in gdelt.slots(self.since, last):\n            for feed in gdelt.FEEDS:",
+        "        for feed in gdelt.FEEDS:\n            for ts in gdelt.slots(self.since, last):",
         "tests/test_producer.py::test_catch_up_publishes_slot_by_slot_both_feeds_each",
     ),
     (
@@ -104,8 +107,8 @@ MUTATIONS = [
     (
         "a missing slot fails stream = batch",
         "src/baltic/analysis/checks.py",
-        '"ok": not differ.any() and set(expected) <= set(unique.index),',
-        '"ok": not differ.any(),',
+        '"ok": bool(expected) and not differ.any() and set(expected) <= set(unique.index),',
+        '"ok": bool(expected) and not differ.any(),',
         "tests/test_analysis.py::test_stream_vs_batch_fails_on_a_missing_slot_alone",
     ),
     (
@@ -136,13 +139,69 @@ MUTATIONS = [
         "GRACE_SLOTS = 2",
         "tests/test_producer.py::test_a_404_younger_than_a_day_waits_instead_of_skipping",
     ),
+    (
+        "a 404 a day old is missing",
+        "src/baltic/stream/producer.py",
+        "GRACE_SLOTS = 96",
+        "GRACE_SLOTS = 97",
+        "tests/test_producer.py::test_an_old_404_is_published_as_missing_and_remembered",
+    ),
+    (
+        "a lost marker stalls one day, not less",
+        "src/baltic/stream/monitor.py",
+        "STUCK_SLOTS = 96",
+        "STUCK_SLOTS = 95",
+        "tests/test_monitor.py::test_a_lost_marker_stalls_at_most_one_day",
+    ),
+    (
+        "a waiting slot stays in view",
+        "src/baltic/stream/producer.py",
+        "        self.since = self.since or gdelt.shift(last, 1 - BACKLOG_SLOTS)\n",
+        "",
+        "tests/test_producer.py::test_a_waiting_slot_is_never_skipped_without_since",
+    ),
+    (
+        "commit only when idle",
+        "src/baltic/stream/monitor.py",
+        "if monitor.handle(json.loads(value)) and monitor.idle:",
+        "if monitor.handle(json.loads(value)):",
+        "tests/test_monitor.py::test_the_offset_is_committed_only_when_no_slot_is_half_read",
+    ),
+    (
+        "an unflushed message fails the file",
+        "src/baltic/stream/producer.py",
+        "self.producer.flush(120) > 0 or self.failed",
+        "self.failed",
+        "tests/test_producer.py::test_a_message_kafka_never_confirmed_fails_the_file",
+    ),
+    (
+        "a day the lake lacks fails reconcile",
+        "src/baltic/analysis/checks.py",
+        "for day in sorted(ref):",
+        "for day in sorted(set(rows.index) & ref.keys()):",
+        "tests/test_analysis.py::test_reconcile_fails_on_a_day_the_lake_lacks",
+    ),
+    (
+        "a stalled monitor fails stream = batch",
+        "src/baltic/analysis/checks.py",
+        "expected = gdelt.slots(start, horizon)",
+        "expected = list(unique.index)",
+        "tests/test_analysis.py::test_stream_vs_batch_fails_on_a_stalled_or_empty_monitor",
+    ),
+    (
+        "mirror keeps out of the live window",
+        "src/baltic/batch/mirror.py",
+        "    if jobs[-1][1] >= until:",
+        "    if False:",
+        "tests/test_batch.py::test_mirror_downloads_marks_missing_and_resumes",
+    ),
 ]
 
 
 def pytest(test: str) -> int:
     """Exit code of one test: 0 passed, 1 failed (anything else: the test could not even run)."""
     cmd = ["uv", "run", "pytest", "-q", "-p", "no:cacheprovider", test]
-    return subprocess.run(cmd, cwd=R, capture_output=True, text=True, check=False).returncode
+    return subprocess.run(cmd, cwd=R, env=ENV, capture_output=True, check=False).returncode
 
 
 bad = 0
@@ -155,9 +214,6 @@ for name, path, old, new, test in MUTATIONS:
     try:
         code = pytest(test)
     finally:
-        time.sleep(
-            1
-        )  # a same-size restore within one second would keep the mutant's cached bytecode
         f.write_text(original)
     bad += code != 1
     print(f"{'RED  ' if code == 1 else 'GREEN'} {name}  ({test.split('::')[1]})")

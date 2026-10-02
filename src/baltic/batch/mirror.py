@@ -8,11 +8,15 @@ import requests
 from baltic import gdelt
 from baltic.layout import Layout, write_atomic
 
+WORKERS = 12  # I/O bound: threads overlap the downloads (gdelt.session's pool holds 16)
 
-def mirror(
-    layout: Layout, http: requests.Session, day: str, days: int, workers: int = 12
-) -> Counter[str]:
-    """Fetch every missing file of `days` days from day (YYYY-MM-DD); idempotent. Returns outcome counts."""
+
+def mirror(layout: Layout, http: requests.Session, day: str, days: int, until: str) -> Counter[str]:
+    """Fetch every missing file of `days` days from day (YYYY-MM-DD), all before `until`; idempotent.
+
+    Returns outcome counts. Files from `until` on belong to the producer: archived here, they would never
+    reach Kafka, and a fresh 404 there may only mean "not uploaded yet".
+    """
 
     def fetch(job: tuple[str, str]) -> str:
         feed, ts = job
@@ -24,8 +28,10 @@ def mirror(
         return "downloaded"
 
     jobs = [(f, ts) for ts in gdelt.day_slots(day, days) for f in gdelt.FEEDS]
+    if jobs[-1][1] >= until:
+        raise ValueError(f"mirror only fetches slots before {until} (the producer's live window)")
     todo = [job for job in jobs if not layout.has(*job)]
-    with ThreadPoolExecutor(workers) as pool:  # I/O bound: threads overlap the downloads
+    with ThreadPoolExecutor(WORKERS) as pool:
         outcome = Counter(pool.map(fetch, todo))
     outcome["already there"] = len(jobs) - len(todo)
     return outcome
