@@ -17,8 +17,8 @@ _SPARK_TYPE: dict[object, str] = {
     list[str]: "array<string>",
     float | None: "double",
 }
-# One schema, derived from Article: Spark matches columns by position. URLs stay out of the lake.
-_FIELDS = {c: t for c, t in get_type_hints(article.Article).items() if c != "url"}
+# One schema, derived from Article: Spark matches columns by position
+_FIELDS = get_type_hints(article.Article)
 COLUMNS = tuple(_FIELDS)
 SCHEMA = ", ".join(f"{c} {_SPARK_TYPE[t]}" for c, t in _FIELDS.items())
 Key = tuple[str, str, str]  # (day YYYYMMDD, group, domain)

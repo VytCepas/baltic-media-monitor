@@ -55,7 +55,7 @@ class KafkaSink:
         ids = set()
         for a in articles:
             self._send({"kind": "article", "slot": ts, **a})
-            ids.add(a["id"])
+            ids.add(article.key(a))
         done = {"kind": "done", "slot": ts, "feed": feed, "ids": len(ids), "sent_at": time.time()}
         self._send(done)
         if self.producer.flush(120) > 0 or self.failed:

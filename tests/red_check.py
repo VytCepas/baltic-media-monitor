@@ -126,6 +126,20 @@ MUTATIONS = [
         "tests/test_ai.py::test_score_and_h3",
     ),
     (
+        "an article is its id AND url",
+        "src/baltic/article.py",
+        '    return a["id"], a["url"]',
+        '    return a["id"], ""',
+        "tests/test_monitor.py::test_two_articles_sharing_a_gdelt_id_both_count",
+    ),
+    (
+        "the baseline keys by id AND url",
+        "src/baltic/article.py",
+        'KEY = ("id", "url")',
+        'KEY = ("id",)',
+        "tests/test_batch.py::test_articles_sharing_a_gdelt_id_are_kept_apart",
+    ),
+    (
         "wait for every announced article",
         "src/baltic/stream/monitor.py",
         "len(self.ids.get(feed, ())) >= n",

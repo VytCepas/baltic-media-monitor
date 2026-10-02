@@ -34,6 +34,15 @@ def test_duplicates_count_once_and_late_messages_of_closed_slots_are_dropped():
     assert s.add(art(A, "2")) == [] and s.idle  # a re-read after a restart
 
 
+def test_two_articles_sharing_a_gdelt_id_both_count():
+    s = SlotAssembler()
+    s.add(art(A, "T0", feed="tr", url="https://a.pl/1"))
+    s.add(art(A, "T0", feed="tr", url="https://b.ru/2"))  # GDELT reused the id
+    s.add(done(A, "en"))
+    (closed,) = s.add(done(A, "tr", ids=2))
+    assert closed.rows == 2 and closed.security["ru_by"] == 2
+
+
 def test_a_slot_waits_for_every_announced_article():
     s = SlotAssembler()
     s.add(art(A, "1"))

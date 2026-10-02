@@ -5,8 +5,9 @@ Pure functions without I/O, so the stream, the Spark job and the AI step classif
 
 import html
 import re
+from collections.abc import Mapping
 from enum import IntEnum
-from typing import TypedDict
+from typing import Any, TypedDict
 
 BALTIC_COUNTRIES = frozenset({"LH", "LG", "EN"})  # FIPS codes: Lithuania, Latvia, Estonia
 BALTIC_TLDS = (".lt", ".lv", ".ee")
@@ -30,6 +31,9 @@ SECURITY_THEMES = frozenset(
     }
 )
 GROUPS = ("ru_by", "regional", "other", "baltic", "baltic_rus")
+# GDELT reuses one record id for DIFFERENT translated articles in the same file (11 % of the translated
+# rows in September), so an article is identified by its id AND its url
+KEY = ("id", "url")
 
 _TITLE = re.compile(r"<PAGE_TITLE>(.*?)</PAGE_TITLE>", re.S)
 _SOURCE_LANG = re.compile(r"srclc:(\w+)")
@@ -72,6 +76,11 @@ class Article(TypedDict):
     persons: list[str]
     orgs: list[str]
     tone: float | None
+
+
+def key(a: Mapping[str, Any]) -> tuple[str, str]:
+    """An article's identity, the values of KEY: what de-duplication compares."""
+    return a["id"], a["url"]
 
 
 def group(domain: str, lang: str) -> str:

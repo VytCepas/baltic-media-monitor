@@ -100,8 +100,8 @@ def done(ts: str, feed: str, sent_at: float = 0.0, ids: int = 0) -> dict[str, An
 
 def art(ts: str, id_: str, **fields: Any) -> dict[str, Any]:
     """An article message with only the fields the monitor reads; `fields` override the defaults."""
-    defaults = {"feed": "en", "group": "ru_by", "about_baltic": True, "security": True}
-    return {"kind": "article", "slot": ts, "id": id_, **defaults, **fields}
+    defaults = {"feed": "en", "url": f"https://x/{id_}", "group": "ru_by", "about_baltic": True}
+    return {"kind": "article", "slot": ts, "id": id_, **defaults, "security": True, **fields}
 
 
 def write_lake(

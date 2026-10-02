@@ -3,7 +3,7 @@
 binaryFiles  whole zips packed into input splits       (a zip cannot be split)
 flatMap      mapper.map_file: articles + local counts   (MAP with a combiner)
 reduceByKey  sum counts per (day, group, domain)        (SHUFFLE + REDUCE)
-DataFrame    dedupe articles, groupBy aggregates        (Spark SQL)
+DataFrame    dedupe articles by key, groupBy aggregates        (Spark SQL)
 write        silver/articles by day, gold tables        (the action: lazy evaluation runs here)
 """
 
@@ -14,6 +14,7 @@ from typing import Any
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F  # noqa: N812  Spark convention
 
+from baltic import article
 from baltic.batch import mapper
 from baltic.layout import Lake
 
@@ -43,7 +44,8 @@ def transform(spark: SparkSession, files: list[Path]) -> tuple[DataFrame, dict[s
     )
     articles = (
         spark.createDataFrame(tagged.filter(lambda t: t[0] == "article").values(), mapper.SCHEMA)
-        .dropDuplicates(["id"])
+        .dropDuplicates(list(article.KEY))
+        .drop("url")  # URLs stay out of the lake
         .withColumn("dt", F.to_date(F.substring("ts", 1, 8), "yyyyMMdd"))
     )
     counts = (

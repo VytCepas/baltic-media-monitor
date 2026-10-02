@@ -9,7 +9,7 @@ global time order the producer published in.
 
 Delivery is at-least-once. Offsets are committed by hand, only after the state (detector + last closed
 slot) is saved and no slot is half-read. A crash therefore re-reads messages; re-read messages of slots
-that were already closed are dropped, and duplicates inside an open slot are dropped by article id.
+that were already closed are dropped, and duplicates inside an open slot are dropped by article key (id + url).
 """
 
 import json
@@ -39,7 +39,9 @@ class Slot:
     """One 15-minute slot being assembled from messages."""
 
     ts: str
-    ids: dict[str, set[str]] = field(default_factory=dict)  # feed -> article ids received
+    ids: dict[str, set[tuple[str, str]]] = field(
+        default_factory=dict
+    )  # feed -> article keys received
     about: int = 0
     security: Counter[str] = field(default_factory=Counter)
     done: dict[str, float] = field(default_factory=dict)  # feed -> producer's send time
@@ -52,8 +54,8 @@ class Slot:
             self.done[msg["feed"]] = msg["sent_at"]
             # markers sent before the count existed (still in Kafka's 14 days): announce 0
             self.announced[msg["feed"]] = msg.get("ids", 0)
-        elif msg["id"] not in (seen := self.ids.setdefault(msg["feed"], set())):
-            seen.add(msg["id"])
+        elif (k := article.key(msg)) not in (seen := self.ids.setdefault(msg["feed"], set())):
+            seen.add(k)
             self.about += msg["about_baltic"]
             self.security[msg["group"]] += msg["about_baltic"] and msg["security"]
 

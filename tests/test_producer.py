@@ -135,9 +135,10 @@ def test_kafka_sink_sends_articles_then_done_and_one_failure_fails_only_that_fil
     sink = producer.KafkaSink("kafka:9092", "gkg.raw")
     sink.producer.fail = {"20261001000000"}
     with pytest.raises(RuntimeError, match="2 failed"):
-        sink.publish("en", "20261001000000", [{"id": "a"}])
+        sink.publish("en", "20261001000000", [{"id": "a", "url": "u"}])
     sink.producer.fail = set()
-    assert sink.publish("tr", "20261001001500", [{"id": "b"}, {"id": "c"}]) == 2
+    two = [{"id": "b", "url": "u1"}, {"id": "b", "url": "u2"}]  # GDELT reused the id
+    assert sink.publish("tr", "20261001001500", two) == 2
     kinds = [(m["kind"], m["slot"]) for m in sink.producer.sent[2:]]
     assert kinds == [("article", "20261001001500")] * 2 + [("done", "20261001001500")]
 
@@ -147,4 +148,4 @@ def test_a_message_kafka_never_confirmed_fails_the_file(monkeypatch):
     sink = producer.KafkaSink("kafka:9092", "gkg.raw")
     sink.producer.unflushed = 1  # still queued when the flush timed out
     with pytest.raises(RuntimeError, match="0 failed"):
-        sink.publish("en", SINCE, [{"id": "a"}])
+        sink.publish("en", SINCE, [{"id": "a", "url": "u"}])

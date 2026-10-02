@@ -47,6 +47,15 @@ def test_mirror_downloads_marks_missing_and_resumes(layout):
         mirror.mirror(layout, Http({}, files), "2026-09-30", 1, until=day[-1])
 
 
+def test_articles_sharing_a_gdelt_id_are_kept_apart(layout):
+    row = next(r for r in rows("baltic_tr.gkg.csv") if article.is_relevant(article.parse(r, "tr")))
+    rs = [row, [*row[:4], row[4] + "?other", *row[5:]]]  # same id, another url
+    path = layout.raw("tr", TS)
+    path.parent.mkdir(parents=True)
+    path.write_bytes(zip_of(rs))
+    assert baseline.run([path], 1)["relevant"] == 2
+
+
 def test_baseline_is_the_same_whatever_the_number_of_processes(layout):
     files = raw_month(layout)
     one, two = baseline.run(files, 1), baseline.run(files, 2)
@@ -111,7 +120,7 @@ def test_spark_and_the_baseline_agree_and_the_lake_is_written(layout):
 
     files = raw_month(layout)
     distinct = baseline.run(files, 1)["relevant"]
-    # GDELT re-lists an article in a later file now and then: the same ids again
+    # the same rows archived twice count once (the key, id + url, is unique to a row)
     again = layout.raw("en", gdelt.shift(TS, len(files)))
     again.write_bytes(layout.raw("en", TS).read_bytes())
     files = layout.raw_files("2026-09-30", 1)
