@@ -12,7 +12,7 @@ STOP_AT=${STOP_AT:-2026-10-08T00:00:00+03:00}
 LABELS=purpose=ccbd-coursework
 VM_SA=ccbd-vm@$PROJECT.iam.gserviceaccount.com
 AI_SA=ccbd-embedder@$PROJECT.iam.gserviceaccount.com
-IMAGE=$REGION-docker.pkg.dev/$PROJECT/ccbd/embedder:v1
+IMAGE=$REGION-docker.pkg.dev/$PROJECT/ccbd/embedder:v2
 step() { echo "== $*"; }
 
 step "storage: private bucket, raw/ expires after 30 days"

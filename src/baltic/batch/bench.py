@@ -58,16 +58,9 @@ def run_all(layout: Layout, day: str, cfgs: list[Config], repeats: int = REPEATS
         out = layout.bench(cfg.tag, repeat)
         if out.exists() or cfg.workers > (os.cpu_count() or 1):
             continue
-        command = [
-            sys.executable,
-            "-m",
-            "baltic",
-            "--data",
-            str(layout.root),
-            "measure",
-            cfg.engine,
-        ]
-        command += ["--day", day, "--days", str(cfg.days), "--workers", str(cfg.workers)]
+        command = [sys.executable, "-m", "baltic", "--data", str(layout.root), "measure"]
+        command += [cfg.engine, "--day", day, "--days", str(cfg.days)]
+        command += ["--workers", str(cfg.workers)]
         done = subprocess.run(command, check=True, capture_output=True, text=True)  # noqa: S603  own CLI
         result = json.loads(done.stdout.splitlines()[-1])  # the last line; Spark may log above it
         record = {**asdict(cfg), "tag": cfg.tag, "repeat": repeat, "day": day, **result}

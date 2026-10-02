@@ -1,3 +1,7 @@
+import re
+from pathlib import Path
+
+import pytest
 from fakes import put_raw, rows
 
 from baltic.layout import write_atomic
@@ -37,3 +41,13 @@ def test_lake_is_done_only_after_the_last_table_committed(layout):
     lake.gold("series_15m").mkdir(parents=True)
     (lake.gold("series_15m") / "_SUCCESS").touch()
     assert lake.done
+
+
+COMPOSE = Path(__file__).parents[1] / "docker-compose.yml"
+
+
+@pytest.mark.skipif(not COMPOSE.exists(), reason="the image holds no docker-compose.yml")
+def test_kafka_writes_its_log_into_its_volume():
+    compose = COMPOSE.read_text()
+    (log_dir,) = re.findall(r"KAFKA_LOG_DIRS: (\S+)", compose)
+    assert f'"kafka-data:{log_dir}"' in compose  # else a re-created container loses the topic

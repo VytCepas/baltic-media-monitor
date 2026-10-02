@@ -35,7 +35,7 @@ def embed(r: Req):
     }
 
 
-@app.get("/healthz")
+@app.get("/health")  # not /healthz: Cloud Run never routes that path
 def health():
     """Report that the service is up and which model is loaded."""
     return {"ok": True, "model": MODEL}

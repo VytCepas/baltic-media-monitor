@@ -37,3 +37,23 @@ packages = ["src/baltic"]
 [project.scripts]
 baltic = "baltic.__main__:main"
 
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+# D docstrings, C901/PLR091x size caps, S bandit checks, BLE no blind except, plus the usual hygiene sets
+select = [
+    "E", "F", "W", "I", "N", "UP", "B", "SIM", "D", "C901",
+    "PLR0912", "PLR0913", "PLR0915", "RUF", "PERF", "PTH", "RET", "ARG", "A", "S", "BLE",
+]
+ignore = ["E501"]
+pydocstyle.convention = "google"
+mccabe.max-complexity = 10
+# test names describe themselves; a plain assert is the point of a test
+per-file-ignores = { "tests/**" = ["D", "S"] }
+
+[tool.mypy]  # strict type checking of src/ (tests are checked by running them)
+python_version = "3.12"
+strict = true
+warn_unused_configs = true
+

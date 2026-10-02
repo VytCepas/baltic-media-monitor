@@ -3,8 +3,8 @@
 - reconcile: Spark's per-day row counts equal an independent collector's (reference_days.json, written by
   a separate script in September); relevant articles agree within 0.5 % (Spark de-duplicates by article key).
 - stream_vs_batch: every slot from the live start to the horizon was closed by the monitor and agrees
-  with Spark's series over the same raw files (equal security counts per group). Duplicate lines (a slot re-closed after a crash
-  between writing and saving state: at-least-once) are counted and reported, and do not fail the check.
+  with Spark's series over the same raw files (equal security counts per group). Duplicate lines (a slot
+  re-closed after a crash between writing and saving state: at-least-once) are counted, and do not fail.
 """
 
 import json

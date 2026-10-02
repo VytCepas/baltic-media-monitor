@@ -88,7 +88,11 @@ just evaluate && just report                # H3, figures, summary.json
 On Google Cloud the VM runs the same recipes itself on every boot (`infra/vm.sh`); the operator runs
 `PROJECT=… INVOKER=user:… bash infra/up.sh` once, and `bash infra/down.sh` after grading.
 
-## Ethics and data protection
+**Done when** `just ci`, `just reconcile` and `just stream-vs-batch` exit 0 and
+`jq -e '.H1 and .H2 and .ai.H3.decided and .scaling.speedup and .live' data/report/summary.json` passes.
+
+## Ethics, data protection, security
 
 Public metadata only; no article text stored; no access to blocked sites attempted; a private bucket and
-a private model endpoint; every resource is deleted after grading.
+a private model endpoint; no credentials in the repository; every resource is deleted after grading.
+Report a vulnerability through GitHub's private vulnerability reporting (Security tab), not in an issue.

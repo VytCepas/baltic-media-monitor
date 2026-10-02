@@ -13,7 +13,8 @@ EMBEDDER=$(md ccbd-embedder-url)
 export EMBEDDER
 log() { echo "$(date -u +%FT%TZ) $*"; }
 retry() { for i in 1 2 3 4 5; do "$@" && return 0; log "retry $i: $*"; sleep $((30 * i)); done; return 1; }
-up() { gcloud storage rsync -r "data/$1" "gs://$BUCKET/$1" --quiet; }  # the bucket mirrors data/
+up() { gcloud storage rsync -r "data/$1" "gs://$BUCKET/$1" --quiet "${@:2}"; }  # the bucket mirrors data/
+EXACT=--delete-unmatched-destination-objects  # for Spark's trees: it names its part files anew on every write
 CORES=$(nproc)
 log "boot, $CORES vCPU"
 
@@ -46,7 +47,7 @@ systemctl is-active --quiet ccbd-sync.timer || systemd-run --unit=ccbd-sync --on
 
 # 4. batch layer: September, then hand the history to the speed layer
 retry just mirror 2026-09-01 30 && up raw
-[ -f data/lake/gold/series_15m/_SUCCESS ] || { log "Spark ETL, 30 days"; just etl 2026-09-01 30 && up lake; }
+[ -f data/lake/gold/series_15m/_SUCCESS ] || { log "Spark ETL, 30 days"; just etl 2026-09-01 30 && up lake "$EXACT"; }
 just seed && just monitor
 
 # 5. AI: match through the private Cloud Run service, then the labelling sheets
@@ -66,5 +67,5 @@ DAYS=$(( ($(date -u +%s) - $(date -u -d 2026-10-01 +%s)) / 86400 + 1 ))
 H=$(date -u -d '30 min ago' +%Y%m%d%H%M%S)  # fixed BEFORE the ETL: later files are not in its lake
 nice just etl-live 2026-10-01 "$DAYS" && just stream-vs-batch --horizon "$H"
 just report
-for d in raw lake-live monitor report; do up "$d"; done
+up raw; up monitor; up lake-live "$EXACT"; up report "$EXACT"
 log "batch pipeline done"

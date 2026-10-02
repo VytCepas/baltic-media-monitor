@@ -1,9 +1,9 @@
 """The batch layer: PySpark map -> shuffle -> reduce over raw zips, then Spark SQL into silver and gold Parquet.
 
-binaryFiles  whole zips packed into input splits       (a zip cannot be split)
+binaryFiles  whole zips packed into input splits        (a zip cannot be split)
 flatMap      mapper.map_file: articles + local counts   (MAP with a combiner)
 reduceByKey  sum counts per (day, group, domain)        (SHUFFLE + REDUCE)
-DataFrame    dedupe articles by key, groupBy aggregates        (Spark SQL)
+DataFrame    dedupe by key, groupBy aggregates          (Spark SQL)
 write        silver/articles by day, gold tables        (the action: lazy evaluation runs here)
 """
 

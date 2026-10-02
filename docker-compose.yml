@@ -31,6 +31,7 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_NUM_PARTITIONS: 1                            # global order: see stream/monitor.py
       KAFKA_LOG_RETENTION_HOURS: 336                     # 14 days: a stopped consumer can catch up
+      KAFKA_LOG_DIRS: /var/lib/kafka/data                # the volume; the default is inside the container
       KAFKA_HEAP_OPTS: -Xms512m -Xmx1g
     volumes: [ "kafka-data:/var/lib/kafka/data" ]       # no host port: only this network reaches Kafka
     healthcheck:
@@ -60,7 +61,7 @@ services:
     profiles: [ ai ]
     ports: [ "127.0.0.1:8080:8080" ]
     healthcheck:                                         # `just embedder` (--wait) waits for the model
-      test: [ "CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8080/healthz')" ]
+      test: [ "CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8080/health')" ]
       interval: 5s
       retries: 60
 

@@ -301,6 +301,13 @@ MUTATIONS = [
         "tests/test_producer.py::test_a_full_local_queue_delays_a_message_and_never_drops_it",
     ),
     (
+        "Kafka's log in its volume",
+        "docker-compose.yml",
+        "KAFKA_LOG_DIRS: /var/lib/kafka/data",
+        "KAFKA_LOG_DIRS: /tmp/kafka-logs",
+        "tests/test_layout.py::test_kafka_writes_its_log_into_its_volume",
+    ),
+    (
         "candidates sorted by time",
         "src/baltic/ai/match.py",
         '.sort_values("t").reset_index(drop=True)',

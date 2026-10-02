@@ -123,4 +123,5 @@ red-check:
 
 # copy the VM's results (everything but raw) from the bucket: BUCKET=... just pull
 pull:
-    for d in lake lake-live monitor ai bench report logs; do mkdir -p data/$d && ${GCLOUD:-gcloud} storage rsync -r gs://$BUCKET/$d data/$d; done
+    for d in lake lake-live monitor bench report logs; do mkdir -p data/$d && ${GCLOUD:-gcloud} storage rsync -r --delete-unmatched-destination-objects gs://$BUCKET/$d data/$d; done
+    mkdir -p data/ai && ${GCLOUD:-gcloud} storage rsync -r --no-clobber gs://$BUCKET/ai data/ai  # never overwrites a sheet being labelled
