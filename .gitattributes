@@ -1,0 +1,4 @@
+# Git stores LF; shell scripts stay LF everywhere so their shebangs survive a Windows checkout.
+* text=auto
+*.sh text eol=lf
+uv.lock linguist-generated=true

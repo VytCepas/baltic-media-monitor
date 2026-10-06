@@ -1,0 +1,59 @@
+[project]
+name = "baltic-media-monitor"
+version = "0.1.0"
+description = "GDELT-based monitor of how Russian, foreign and Baltic outlets cover the Baltics"
+requires-python = ">=3.12"
+dependencies = [
+    "confluent-kafka>=2.11",
+    "google-auth>=2.40",
+    "matplotlib>=3.11.2",
+    "numpy>=2.5.3",
+    "pandas>=3.0.6",
+    "pyarrow>=25.0.1",
+    "pyspark>=4.0",
+    "requests>=2.34.2",
+    "scipy>=1.16",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.18",
+    "pandas-stubs>=3.0.5.260914",
+    "pytest>=8.4",
+    "pytest-cov>=6.0",
+    "pytest-xdist>=3.6",
+    "ruff>=0.14",
+    "scipy-stubs>=1.18.1.1",
+    "types-requests>=2.33.0.20260906",
+]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/baltic"]
+
+[project.scripts]
+baltic = "baltic.__main__:main"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+# D docstrings, C901/PLR091x size caps, S bandit checks, BLE no blind except, plus the usual hygiene sets
+select = [
+    "E", "F", "W", "I", "N", "UP", "B", "SIM", "D", "C901",
+    "PLR0912", "PLR0913", "PLR0915", "RUF", "PERF", "PTH", "RET", "ARG", "A", "S", "BLE",
+]
+ignore = ["E501"]
+pydocstyle.convention = "google"
+mccabe.max-complexity = 10
+# test names describe themselves; a plain assert is the point of a test
+per-file-ignores = { "tests/**" = ["D", "S"] }
+
+[tool.mypy]  # strict type checking of src/ (tests are checked by running them)
+python_version = "3.12"
+strict = true
+warn_unused_configs = true
+

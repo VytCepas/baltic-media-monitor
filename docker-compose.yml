@@ -1,0 +1,69 @@
+# The whole prototype on one Docker host, the laptop or the GCP VM alike.
+#   kafka, producer, monitor    the speed layer, always on            (just up / just monitor)
+#   job                         any one-off command of the same image (docker compose run --rm job <command>)
+#   embedder                    the AI service locally; on GCP it runs on Cloud Run
+x-app: &app
+  build: .
+  image: baltic:local
+  environment:
+    KAFKA: kafka:9092
+    DATA_DIR: /data
+    SINCE: ${SINCE:-}               # producer: first slot to publish (catch-up after downtime)
+    SPARK_MEM: ${SPARK_MEM:-6g}
+    EMBEDDER: ${EMBEDDER:-http://embedder:8080}
+  volumes: [ "${DATA_PATH:-./data}:/data" ]  # DATA_PATH: a separate tree, e.g. for a dry run
+  cap_drop: [ ALL ]                          # the app needs no Linux capabilities
+  security_opt: [ "no-new-privileges:true" ]
+
+services:
+  kafka:
+    image: apache/kafka:3.9.1
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller            # KRaft: no ZooKeeper
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_NUM_PARTITIONS: 1                            # global order: see stream/monitor.py
+      KAFKA_LOG_RETENTION_HOURS: 336                     # 14 days: a stopped consumer can catch up
+      KAFKA_LOG_DIRS: /var/lib/kafka/data                # the volume; the default is inside the container
+      KAFKA_HEAP_OPTS: -Xms512m -Xmx1g
+    volumes: [ "kafka-data:/var/lib/kafka/data" ]       # no host port: only this network reaches Kafka
+    healthcheck:
+      test: [ "CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list" ]
+      interval: 10s
+      retries: 12
+
+  producer:
+    <<: *app
+    restart: unless-stopped
+    depends_on: { kafka: { condition: service_healthy } }
+    command: produce
+
+  monitor:
+    <<: *app
+    restart: unless-stopped
+    depends_on: { kafka: { condition: service_healthy } }
+    command: monitor
+
+  job:
+    <<: *app
+    profiles: [ jobs ]
+
+  embedder:
+    build: ai/embedder
+    image: embedder:local
+    profiles: [ ai ]
+    ports: [ "127.0.0.1:8080:8080" ]
+    healthcheck:                                         # `just embedder` (--wait) waits for the model
+      test: [ "CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8080/health')" ]
+      interval: 5s
+      retries: 60
+
+volumes:
+  kafka-data:
